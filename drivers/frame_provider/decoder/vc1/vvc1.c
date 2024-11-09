@@ -819,7 +819,7 @@ int vvc1_dec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
 		vstatus->frame_rate = 96000 / vvc1_amstream_dec_info.rate;
 	else
 		vstatus->frame_rate = -1;
-	vstatus->error_count = READ_VREG(AV_SCRATCH_C);
+	vstatus->error_count = READ_VREG(AV_SCRATCH_6);
 	vstatus->status = stat;
 	vstatus->bit_rate = gvs->bit_rate;
 	vstatus->frame_dur = vvc1_amstream_dec_info.rate;
