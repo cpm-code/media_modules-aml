@@ -2057,6 +2057,8 @@ struct hevc_state_s {
 	/* data for SEI_CONTENT_LIGHT_LEVEL */
 	unsigned int content_light_level[2];
 
+	u32 alternative_transfer_characteristics;
+
 	struct PIC_s *pre_top_pic;
 	struct PIC_s *pre_bot_pic;
 
@@ -8852,6 +8854,30 @@ void *memmem(const void *haystack, size_t n, const void *needle, size_t m)
 }
 
 //
+// Special Parser to find Alternative Transfer Characteristics - of type 18 (HLG)
+//
+// parse_sei not working correctly with this data, hence seperate parse for now until fixed.
+//
+// This parse will check the full input is an exact match for expected (the SEI appears missing the payload type)
+//
+// Only exact match is considered good to process.
+//
+#define SEI_HLG_PATTERN \
+  "\x01\x12\x80\x00\x00\x00\x00\x00" \
+  "\x00\x00\x00\x00\x00\x00\x00\x00" \
+  "\x00\x00\x00\x00\x00\x00\x00\x00" \
+  "\x00\x00\x00\x00\x00\x00\x00\x00"
+
+#define SEI_HLG_PATTERN_LEN 32
+
+void alt_hlg_parse_sei(struct hevc_state_s *hevc, unsigned char* input, size_t input_len) {
+
+  if ((input_len == SEI_HLG_PATTERN_LEN) && 
+      (memcmp(input, SEI_HLG_PATTERN, SEI_HLG_PATTERN_LEN) == 0))
+    hevc->alternative_transfer_characteristics = 18;
+}
+
+//
 // Special Parser to find ATEME SEI Mastering Display Colour Volume and Content Light Level
 //
 // parse_sei not working correctly with this data, hence seperate parse for now until fixed.
@@ -8997,6 +9023,8 @@ static void set_frame_info(struct hevc_state_s *hevc, struct vframe_s *vf,
 				parse_sei(hevc, pic, p, size);
 				if (size > 42) // check for ateme
 					ateme_parse_sei(hevc, p, size);
+				else if (size == 32) // check for alternative transfer characteristics - hlg
+					alt_hlg_parse_sei(hevc, p, size);
 			}
 			p += size;
 		}
@@ -9016,6 +9044,14 @@ static void set_frame_info(struct hevc_state_s *hevc, struct vframe_s *vf,
 			data = vf->signal_type;
 			data = data & 0x7FFFFFFF;
 			data = data | (1<<31);
+			vf->signal_type = data;
+		}
+
+		// If the existing transer characteristics is 14 (BT2020-10), and we have an alternative for 18 (HLG), then treat as HLG.
+		if ((((vf->signal_type >> 8) & 0xff) == 14) && (hevc->alternative_transfer_characteristics == 18)) {
+			u32 data = vf->signal_type;
+			data = data & 0xFFFF00FF;  // Clear bits 8-15
+			data = data | (18<<8);     // Set transfer characteristic to 18 for HLG
 			vf->signal_type = data;
 		}
 	}
