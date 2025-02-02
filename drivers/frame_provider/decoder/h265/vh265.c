@@ -144,6 +144,7 @@ to enable DV of frame mode
 #define IS_4K_SIZE(w, h)  (((w) * (h)) > (1920*1088))
 
 #define SEI_UserDataITU_T_T35	4
+#define SEI_Alternative_Transfer_Characteristics	147
 #define INVALID_IDX -1  /* Invalid buffer index.*/
 
 static struct semaphore h265_sema;
@@ -8878,88 +8879,148 @@ void alt_hlg_parse_sei(struct hevc_state_s *hevc, unsigned char* input, size_t i
 }
 
 //
-// Special Parser to find ATEME SEI Mastering Display Colour Volume and Content Light Level
+// Special Parser implementation for ATEME Titan - multiple SEI in NAL Unit.
 //
-// parse_sei not working correctly with this data, hence seperate parse for now until fixed.
+// Attempts to find the exact type and size for SEI Mastering Display Colour Volume
+// Attempts to find the exact type and size for SEI Content Light Level
+// Attempts to find the exact type and size for SEI Alternative Transfer Characteristics
 //
-// This parse will look for the ATEME string (would be inside the user data SEI which appears missing the payload type)
-// Then attempts to find the exact type and size for SEI Mastering Display Colour Volume
-// Then attempts to find the exact type and size for SEI Content Light Level, exactly after the SEI MDCV
-//
-// Only if both SEI are found in the above in the exact order then can be considered good to process.
-//
+static void process_mdcv_sei(struct hevc_state_s *hevc, const unsigned char* data) {
+
+  const unsigned char* p_sei = data;
+	int color;
+	int coord;
+	int type;
+
+  // Process display primaries (RGB coordinates)
+  for (color = 0; color < 3; color++) {
+    for (coord = 0; coord < 2; coord++) {
+      hevc->primaries[color][coord] = (p_sei[0] << 8) | p_sei[1];
+      p_sei += 2;
+    }
+  }
+
+  // Process white point coordinates
+  for (coord = 0; coord < 2; coord++) {
+    hevc->white_point[coord] = (p_sei[0] << 8) | p_sei[1];
+    p_sei += 2;
+  }
+
+  // Process min/max luminance values
+  for (type = 0; type < 2; type++) {
+    hevc->luminance[type] = (p_sei[0] << 24) | 
+                            (p_sei[1] << 16) |
+                            (p_sei[2] << 8)  |
+                             p_sei[3];
+  p_sei += 4;
+  }
+
+  hevc->sei_present_flag |= SEI_MASTER_DISPLAY_COLOR_MASK;
+}
+
+static void process_cll_sei(struct hevc_state_s *hevc, const unsigned char* data) {
+
+  const unsigned char* p_sei = data;
+    
+  // Process max content light level
+  hevc->content_light_level[0] = (p_sei[0] << 8) | p_sei[1];
+  p_sei += 2;
+    
+  // Process max frame average light level
+  hevc->content_light_level[1] = (p_sei[0] << 8) | p_sei[1];
+    
+  hevc->sei_present_flag |= SEI_CONTENT_LIGHT_LEVEL_MASK;
+}
+
+static void process_atc_sei(struct hevc_state_s *hevc, const unsigned char* data) {
+
+  hevc->alternative_transfer_characteristics = *data;
+}
+
+#define SEI_MDCV_LENGTH 24 // 0x18
+#define SEI_CLL_LENGTH   4 // 0x04
+#define SEI_ATC_LENGTH   1 // 0x01
+
+#define ATEME_ID "ATEME Titan"
+#define ATEME_ID_LEN 11
+
 void ateme_parse_sei(struct hevc_state_s *hevc, unsigned char* input, size_t input_len) {
 
-	if (!hevc || !input || input_len == 0) return;
+  if (!hevc || !input || input_len < 11) return;
 
-	static const char* ateme_id = "ATEME Titan";
-	static const size_t ateme_id_len = 11;
+  unsigned char* ateme_id_pos = memmem(input, input_len, ATEME_ID, ATEME_ID_LEN);
+  if (!ateme_id_pos) return;
 
-	static const unsigned char sei_mdcv_header[] = {SEI_MasteringDisplayColorVolume, 0x18};
-	static const size_t sei_mdcv_header_len = sizeof(sei_mdcv_header);
-	static const int sei_mdcv_data_len = 24;
+  size_t start_pos = (ateme_id_pos - input) + ATEME_ID_LEN;
+  if (start_pos >= input_len) return;
 
-	static const unsigned char sei_cll_header[] = {SEI_ContentLightLevel, 0x04};
-	static const size_t sei_cll_header_len = sizeof(sei_cll_header);
-	static const int sei_cll_data_len = 4;
+  // Reset input to be past the ATEME_ID.
+  input += start_pos;
+  input_len -= start_pos;
 
-	unsigned char sei_mdcv_data[sei_mdcv_data_len];
-	unsigned char sei_cll_data[sei_cll_data_len];
+  // Find SEI end marker 0x80, can only have trailing 0x00 after the end marker, no other values.
+  size_t end_offset = input_len - 1;
+  while ((end_offset > 0) && (input[end_offset] == 0x00)) end_offset--;
+  if ((end_offset == 0) || (input[end_offset] != 0x80)) return;
 
-	unsigned char* ateme_id_pos = memmem(input, input_len, ateme_id, ateme_id_len);
-	if (!ateme_id_pos) return;
+  // Forward scan for valid SEI patterns of interest.
+  size_t curr_pos = 0;
+  while (curr_pos < (end_offset - 1)) {
 
-	size_t remaining_len = input_len - (ateme_id_pos - input);
+    unsigned char sei_type = input[curr_pos];
+    unsigned char sei_length = input[curr_pos + 1];
+    bool sei_match = false;
 
-	unsigned char* sei_mdcv_pos = memmem(ateme_id_pos, remaining_len, sei_mdcv_header, sei_mdcv_header_len);
-	if (!sei_mdcv_pos) return;
+    // Quick check if this could be a valid SEI
+    switch (sei_type) {
+      case SEI_MasteringDisplayColorVolume:
+        sei_match = (sei_length == SEI_MDCV_LENGTH);
+        break;
+      case SEI_ContentLightLevel:
+        sei_match = (sei_length == SEI_CLL_LENGTH);
+        break;
+      case SEI_Alternative_Transfer_Characteristics:
+        sei_match = (sei_length == SEI_ATC_LENGTH);
+        break;
+    }
 
-	// Check if there's enough data for mdcv copy
-	if (remaining_len < sei_mdcv_header_len + sei_mdcv_data_len) return;
+    if (sei_match) {
+      // Found potential SEI, further validate there is a chain of SEI to end.
+      size_t chain_pos = curr_pos;
+      bool valid_chain = true;
 
-	memcpy(sei_mdcv_data, sei_mdcv_pos + sei_mdcv_header_len, sei_mdcv_data_len);
+      while (chain_pos < end_offset) {
+        unsigned char chain_length = input[chain_pos + 1];
+        size_t total_size = 2 + chain_length;
 
-	remaining_len -= sei_mdcv_header_len + sei_mdcv_data_len;
+        if ((chain_pos + total_size) > end_offset) {
+          valid_chain = false;
+          break;
+        }
+                
+        chain_pos += total_size;
+      }
 
-	// Check if there's enough data for cll copy
-	if (remaining_len < sei_cll_header_len + sei_cll_data_len) return;
-
-	unsigned char* sei_cll_pos = sei_mdcv_pos + sei_mdcv_header_len + sei_mdcv_data_len;
-
-	// Next must be the sei cll.
-	if (memcmp(sei_cll_pos, sei_cll_header, sei_cll_header_len) != 0) return; 
-
-	memcpy(sei_cll_data, sei_cll_pos + sei_cll_header_len, sei_cll_data_len);
-
-	int i;
-	int j;
-
-	unsigned char* p_sei = sei_mdcv_data;
-	for (i = 0; i < 3; i++) {
-		for (j = 0; j < 2; j++) {
-			hevc->primaries[i][j] = (*p_sei<<8) | *(p_sei+1);
-			p_sei += 2;
+      if (valid_chain && (chain_pos == end_offset)) {
+        // Valid chain found, process the SEI
+        switch (sei_type) {
+          case SEI_MasteringDisplayColorVolume:
+            process_mdcv_sei(hevc, &input[curr_pos + 2]);
+            break;
+          case SEI_ContentLightLevel:
+            process_cll_sei(hevc, &input[curr_pos + 2]);
+            break;
+          case SEI_Alternative_Transfer_Characteristics:
+            process_atc_sei(hevc, &input[curr_pos + 2]);
+            break;
+        }
+        curr_pos += (2 + sei_length);
+        continue;
+      }
 		}
-	}
-	for (i = 0; i < 2; i++) {
-		hevc->white_point[i] = (*p_sei<<8) | *(p_sei+1);
-		p_sei += 2;
-	}
-	for (i = 0; i < 2; i++) {
-		hevc->luminance[i] = (*p_sei<<24)
-						| (*(p_sei+1)<<16)
-						| (*(p_sei+2)<<8)
-						| *(p_sei+3);
-		p_sei += 4;
-	}
-	hevc->sei_present_flag |= SEI_MASTER_DISPLAY_COLOR_MASK;
 
-	p_sei = sei_cll_data;
-	hevc->content_light_level[0] = (*p_sei<<8) | *(p_sei+1);
-	p_sei += 2;
-	hevc->content_light_level[1] = (*p_sei<<8) | *(p_sei+1);
-	p_sei += 2;
-	hevc->sei_present_flag |= SEI_CONTENT_LIGHT_LEVEL_MASK;
+    curr_pos++;
+  }
 }
 
 static void set_frame_info(struct hevc_state_s *hevc, struct vframe_s *vf,
