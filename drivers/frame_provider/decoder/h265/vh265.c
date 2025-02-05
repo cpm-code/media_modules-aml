@@ -8434,7 +8434,6 @@ static int hevc_local_init(struct hevc_state_s *hevc)
 #define DECODE_BUFFER_NUM_MAX    32
 #define DISPLAY_BUFFER_NUM       6
 
-#define video_domain_addr(adr) (adr&0x7fffffff)
 #define DECODER_WORK_SPACE_SIZE 0x800000
 
 #define spec2canvas(x)  \
