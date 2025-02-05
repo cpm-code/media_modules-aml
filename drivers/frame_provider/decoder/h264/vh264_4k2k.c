@@ -247,10 +247,6 @@ static struct device *cma_dev;
 static unsigned long work_space_adr, ref_start_addr;
 static unsigned long reserved_buffer;
 
-
-#define video_domain_addr(adr) (adr&0x7fffffff)
-
-
 struct buffer_spec_s {
 	unsigned int y_addr;
 	unsigned int uv_addr;
@@ -661,10 +657,9 @@ static void do_alloc_work(struct work_struct *work)
 	if (frame_height == 0)
 		frame_height = mb_height << 4;
 
-	WRITE_VREG(REF_START_VIEW_0, video_domain_addr(ref_start_addr));
+	WRITE_VREG(REF_START_VIEW_0, ref_start_addr);
 	if (!H264_4K2K_SINGLE_CORE) {
-		WRITE_VREG(VDEC2_REF_START_VIEW_0,
-				   video_domain_addr(ref_start_addr));
+		WRITE_VREG(VDEC2_REF_START_VIEW_0, ref_start_addr);
 	}
 
 	WRITE_VREG(MAILBOX_DATA_0,
@@ -1076,8 +1071,7 @@ static void H264_DECODE_INIT(void)
 
 	WRITE_VREG(CANVAS_START, AMVDEC_H264_4K2K_CANVAS_INDEX);
 	/* Start Address of Workspace (UCODE, temp_data...) */
-	WRITE_VREG(WORKSPACE_START,
-			   video_domain_addr(work_space_adr));
+	WRITE_VREG(WORKSPACE_START, work_space_adr);
 	/* Clear all sequence parameter set available */
 	WRITE_VREG(SPS_STATUS, 0);
 	/* Clear all picture parameter set available */
@@ -1153,8 +1147,7 @@ static void H264_DECODE2_INIT(void)
 
 	WRITE_VREG(VDEC2_CANVAS_START, AMVDEC_H264_4K2K_CANVAS_INDEX);
 	/* Start Address of Workspace (UCODE, temp_data...) */
-	WRITE_VREG(VDEC2_WORKSPACE_START,
-			video_domain_addr(work_space_adr));
+	WRITE_VREG(VDEC2_WORKSPACE_START, work_space_adr);
 	/* Clear all sequence parameter set available */
 	WRITE_VREG(VDEC2_SPS_STATUS, 0);
 	/* Clear all picture parameter set available */
