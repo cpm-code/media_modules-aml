@@ -15,8 +15,12 @@
  *
  */
 #define DEBUG
+
+#include <asm/unaligned.h>
+
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/string.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
@@ -48,10 +52,6 @@
 #include "../../../common/chips/decoder_cpu_ver_info.h"
 #include "../utils/vdec_v4l2_buffer_ops.h"
 #include <media/v4l2-mem2mem.h>
-
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/string.h>
 
 /*
 to enable DV of frame mode
@@ -9070,14 +9070,10 @@ static void set_frame_info(struct hevc_state_s *hevc, struct vframe_s *vf,
 		p = pic->aux_data_buf;
 		while (p < pic->aux_data_buf
 			+ pic->aux_data_size - 8) {
-			size = *p++;
-			size = (size << 8) | *p++;
-			size = (size << 8) | *p++;
-			size = (size << 8) | *p++;
-			type = *p++;
-			type = (type << 8) | *p++;
-			type = (type << 8) | *p++;
-			type = (type << 8) | *p++;
+			size = get_unaligned_be32(p);
+			p += 4;
+			type = get_unaligned_be32(p);
+			p += 4;
 			if (type == 0x02000000) {
 				/* hevc_print(hevc, 0,
 				"sei(%d)\n", size); */
