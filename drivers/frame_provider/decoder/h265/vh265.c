@@ -2536,33 +2536,7 @@ static void restore_decode_state(struct hevc_state_s *hevc)
 		release_aux_data(hevc, hevc->decoding_pic);
 		hevc->decoding_pic = NULL;
 	}
-	/*if (vdec_stream_based(vdec) &&
-		(hevc->decode_idx - hevc->decode_idx_bak > 1)) {
-		int i;
-		hevc_print(hevc, 0, "decode_idx %d, decode_idx_bak %d\n",
-								hevc->decode_idx, hevc->decode_idx_bak);
-		for (i = 0; i < MAX_REF_PIC_NUM; i++) {
-			struct PIC_s *pic;
-			pic = hevc->m_PIC[i];
-			if (pic == NULL ||
-				(pic->index == -1) ||
-				(pic->BUF_index == -1) ||
-				(pic->POC == INVALID_POC))
-				continue;
-			if ((pic->decode_idx >= hevc->decode_idx_bak) &&
-					pic->decode_idx != (hevc->decode_idx - 1)) {
-					hevc_print(hevc, 0, "release error buffer\n");
-					pic->error_mark = 0;
-					pic->output_ready = 0;
-					pic->show_frame = false;
-					pic->output_mark = 0;
-					pic->referenced = 0;
-					pic->POC = INVALID_POC;
-					put_mv_buf(hevc, pic);
-					release_aux_data(hevc, pic);
-			}
-		}
-	}*/
+
 	hevc->decode_idx = hevc->decode_idx_bak;
 	hevc->m_pocRandomAccess = hevc->m_pocRandomAccess_bak;
 	hevc->curr_POC = hevc->curr_POC_bak;
@@ -2575,8 +2549,6 @@ static void restore_decode_state(struct hevc_state_s *hevc)
 
 	if (hevc->pic_list_init_flag == 1)
 		hevc->pic_list_init_flag = 0;
-	/*if (hevc->decode_idx == 0)
-		hevc->start_decoding_flag = 0;*/
 
 	hevc->slice_idx = 0;
 	hevc->used_4k_num = -1;
@@ -2605,8 +2577,7 @@ static void hevc_init_stru(struct hevc_state_s *hevc,
 	hevc->new_tile = 0;
 	hevc->iPrevPOC = 0;
 	hevc->list_no = 0;
-	/* int m_uiMaxCUWidth = 1<<7; */
-	/* int m_uiMaxCUHeight = 1<<7; */
+
 	hevc->m_pocRandomAccess = MAX_INT;
 	hevc->tile_enabled = 0;
 	hevc->tile_x = 0;
@@ -4689,11 +4660,6 @@ static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
 				RefPicSetStCurr0[num_neg] =
 					pic->POC - ((1 << (RPS_USED_BIT - 1)) -
 								delt);
-				/* hevc_print(hevc, 0,
-				 *	"RefPicSetStCurr0 %x %x %x\n",
-				 *   RefPicSetStCurr0[num_neg], pic->POC,
-				 *   (0x800-(params[i]&0x7ff)));
-				 */
 				num_neg++;
 			} else {
 #ifdef SUPPORT_LONG_TERM_RPS
@@ -4704,10 +4670,6 @@ static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
 				}
 #endif
 				RefPicSetStCurr1[num_pos] = pic->POC + delt;
-				/* hevc_print(hevc, 0,
-				 *	"RefPicSetStCurr1 %d\n",
-				 *   RefPicSetStCurr1[num_pos]);
-				 */
 				num_pos++;
 			}
 		}
@@ -8681,11 +8643,6 @@ static int parse_sei(struct hevc_state_s *hevc,
 
 				break;
 			case SEI_MasteringDisplayColorVolume:
-				/*hevc_print(hevc, 0,
-					"sei type: primary display color volume %d, size %d\n",
-					payload_type,
-					payload_size);*/
-				/* master_display_colour */
 				p_sei = p;
 				for (i = 0; i < 3; i++) {
 					for (j = 0; j < 2; j++) {
@@ -8709,22 +8666,7 @@ static int parse_sei(struct hevc_state_s *hevc,
 						| *(p_sei+3);
 					p_sei += 4;
 				}
-				hevc->sei_present_flag |=
-					SEI_MASTER_DISPLAY_COLOR_MASK;
-				/*for (i = 0; i < 3; i++)
-					for (j = 0; j < 2; j++)
-						hevc_print(hevc, 0,
-						"\tprimaries[%1d][%1d] = %04x\n",
-						i, j,
-						hevc->primaries[i][j]);
-				hevc_print(hevc, 0,
-					"\twhite_point = (%04x, %04x)\n",
-					hevc->white_point[0],
-					hevc->white_point[1]);
-				hevc_print(hevc, 0,
-					"\tmax,min luminance = %08x, %08x\n",
-					hevc->luminance[0],
-					hevc->luminance[1]);*/
+				hevc->sei_present_flag |= SEI_MASTER_DISPLAY_COLOR_MASK;
 				break;
 			case SEI_ContentLightLevel:
 				if (get_dbg_flag(hevc) & H265_DEBUG_PRINT_SEI)
@@ -8755,75 +8697,6 @@ static int parse_sei(struct hevc_state_s *hevc,
 	}
 	return 0;
 }
-
-/*
-static unsigned calc_ar(unsigned idc, unsigned sar_w, unsigned sar_h,
-			unsigned w, unsigned h)
-{
-	unsigned ar;
-
-	if (idc	== 255) {
-		ar = div_u64(256ULL * sar_h * h,
-				sar_w * w);
-	} else {
-		switch (idc) {
-		case 1:
-			ar = 0x100 * h / w;
-			break;
-		case 2:
-			ar = 0x100 * h * 11 / (w * 12);
-			break;
-		case 3:
-			ar = 0x100 * h * 11 / (w * 10);
-			break;
-		case 4:
-			ar = 0x100 * h * 11 / (w * 16);
-			break;
-		case 5:
-			ar = 0x100 * h * 33 / (w * 40);
-			break;
-		case 6:
-			ar = 0x100 * h * 11 / (w * 24);
-			break;
-		case 7:
-			ar = 0x100 * h * 11 / (w * 20);
-			break;
-		case 8:
-			ar = 0x100 * h * 11 / (w * 32);
-			break;
-		case 9:
-			ar = 0x100 * h * 33 / (w * 80);
-			break;
-		case 10:
-			ar = 0x100 * h * 11 / (w * 18);
-			break;
-		case 11:
-			ar = 0x100 * h * 11 / (w * 15);
-			break;
-		case 12:
-			ar = 0x100 * h * 33 / (w * 64);
-			break;
-		case 13:
-			ar = 0x100 * h * 99 / (w * 160);
-			break;
-		case 14:
-			ar = 0x100 * h * 3 / (w * 4);
-			break;
-		case 15:
-			ar = 0x100 * h * 2 / (w * 3);
-			break;
-		case 16:
-			ar = 0x100 * h * 1 / (w * 2);
-			break;
-		default:
-			ar = h * 0x100 / w;
-			break;
-		}
-	}
-
-	return ar;
-}
-*/
 
 void *memmem(const void *haystack, size_t n, const void *needle, size_t m)
 {
