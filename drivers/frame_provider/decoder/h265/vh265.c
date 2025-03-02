@@ -2701,146 +2701,202 @@ static void uninit_detrefill_buf(struct hevc_state_s *hevc)
 static void convUnc8x4blk(uint16_t* blk8x4Luma,
 	uint16_t* blk8x4Cb, uint16_t* blk8x4Cr, uint16_t* cmBodyBuf, int32_t direction)
 {
+	const uint16_t mask = 0x3ff;  // 10-bit mask
+
 	if (direction == 0) {
-		blk8x4Luma[3 + 0 * 8] = ((cmBodyBuf[0] >> 0)) & 0x3ff;
-		blk8x4Luma[3 + 1 * 8] = ((cmBodyBuf[1] << 6)
-			| (cmBodyBuf[0] >> 10)) & 0x3ff;
-		blk8x4Luma[3 + 2 * 8] = ((cmBodyBuf[1] >> 4)) & 0x3ff;
-		blk8x4Luma[3 + 3 * 8] = ((cmBodyBuf[2] << 2)
-			| (cmBodyBuf[1] >> 14)) & 0x3ff;
-		blk8x4Luma[7 + 0 * 8] = ((cmBodyBuf[3] << 8)
-			| (cmBodyBuf[2] >> 8)) & 0x3ff;
-		blk8x4Luma[7 + 1 * 8] = ((cmBodyBuf[3] >> 2)) & 0x3ff;
-		blk8x4Luma[7 + 2 * 8] = ((cmBodyBuf[4] << 4)
-			| (cmBodyBuf[3] >> 12)) & 0x3ff;
-		blk8x4Luma[7 + 3 * 8] = ((cmBodyBuf[4] >> 6)) & 0x3ff;
-		blk8x4Cb  [0 + 0 * 4] = ((cmBodyBuf[5] >> 0)) & 0x3ff;
-		blk8x4Cr  [0 + 0 * 4] = ((cmBodyBuf[6]	<< 6)
-			| (cmBodyBuf[5] >> 10)) & 0x3ff;
-		blk8x4Cb  [0 + 1 * 4] = ((cmBodyBuf[6] >> 4)) & 0x3ff;
-		blk8x4Cr  [0 + 1 * 4] = ((cmBodyBuf[7] << 2)
-			| (cmBodyBuf[6] >> 14)) & 0x3ff;
 
-		blk8x4Luma[0 + 0 * 8] = ((cmBodyBuf[0 + 8] >> 0)) & 0x3ff;
-		blk8x4Luma[1 + 0 * 8] = ((cmBodyBuf[1 + 8] << 6) |
-			(cmBodyBuf[0 + 8] >> 10)) & 0x3ff;
-		blk8x4Luma[2 + 0 * 8] = ((cmBodyBuf[1 + 8] >> 4)) & 0x3ff;
-		blk8x4Luma[0 + 1 * 8] = ((cmBodyBuf[2 + 8] << 2) |
-			(cmBodyBuf[1 + 8] >> 14)) & 0x3ff;
-		blk8x4Luma[1 + 1 * 8] = ((cmBodyBuf[3 + 8] << 8) |
-			(cmBodyBuf[2 + 8] >> 8)) & 0x3ff;
-		blk8x4Luma[2 + 1 * 8] = ((cmBodyBuf[3 + 8] >> 2)) & 0x3ff;
-		blk8x4Luma[0 + 2 * 8] = ((cmBodyBuf[4 + 8] << 4) |
-			(cmBodyBuf[3 + 8] >> 12)) & 0x3ff;
-		blk8x4Luma[1 + 2 * 8] = ((cmBodyBuf[4 + 8] >> 6)) & 0x3ff;
-		blk8x4Luma[2 + 2 * 8] = ((cmBodyBuf[5 + 8] >> 0)) & 0x3ff;
-		blk8x4Luma[0 + 3 * 8] = ((cmBodyBuf[6 + 8] << 6) |
-			(cmBodyBuf[5 + 8] >> 10)) & 0x3ff;
-		blk8x4Luma[1 + 3 * 8] = ((cmBodyBuf[6 + 8] >> 4)) & 0x3ff;
-		blk8x4Luma[2 + 3 * 8] = ((cmBodyBuf[7 + 8] << 2) |
-			(cmBodyBuf[6 + 8] >> 14)) & 0x3ff;
+		// Prefetch cmBodyBuf data for better cache usage on ARM
+		__builtin_prefetch(cmBodyBuf, 0);
+		__builtin_prefetch(cmBodyBuf + 8, 0);
+		__builtin_prefetch(cmBodyBuf + 16, 0);
+		__builtin_prefetch(cmBodyBuf + 24, 0);
 
-		blk8x4Luma[4 + 0 * 8] = ((cmBodyBuf[0 + 16] >> 0)) & 0x3ff;
-		blk8x4Luma[5 + 0 * 8] = ((cmBodyBuf[1 + 16] << 6) |
-			(cmBodyBuf[0 + 16] >> 10)) & 0x3ff;
-		blk8x4Luma[6 + 0 * 8] = ((cmBodyBuf[1 + 16] >> 4)) & 0x3ff;
-		blk8x4Luma[4 + 1 * 8] = ((cmBodyBuf[2 + 16] << 2) |
-			(cmBodyBuf[1 + 16] >> 14)) & 0x3ff;
-		blk8x4Luma[5 + 1 * 8] = ((cmBodyBuf[3 + 16] << 8) |
-			(cmBodyBuf[2 + 16] >> 8)) & 0x3ff;
-		blk8x4Luma[6 + 1 * 8] = ((cmBodyBuf[3 + 16] >> 2)) & 0x3ff;
-		blk8x4Luma[4 + 2 * 8] = ((cmBodyBuf[4 + 16] << 4) |
-			(cmBodyBuf[3 + 16] >> 12)) & 0x3ff;
-		blk8x4Luma[5 + 2 * 8] = ((cmBodyBuf[4 + 16] >> 6)) & 0x3ff;
-		blk8x4Luma[6 + 2 * 8] = ((cmBodyBuf[5 + 16] >> 0)) & 0x3ff;
-		blk8x4Luma[4 + 3 * 8] = ((cmBodyBuf[6 + 16] << 6) |
-			(cmBodyBuf[5 + 16] >> 10)) & 0x3ff;
-		blk8x4Luma[5 + 3 * 8] = ((cmBodyBuf[6 + 16] >> 4)) & 0x3ff;
-		blk8x4Luma[6 + 3 * 8] = ((cmBodyBuf[7 + 16] << 2) |
-			(cmBodyBuf[6 + 16] >> 14)) & 0x3ff;
+		uint16_t val0, val1, val2, val3, val4, val5, val6, val7;
 
-		blk8x4Cb[1 + 0 * 4] = ((cmBodyBuf[0 + 24] >> 0)) & 0x3ff;
-		blk8x4Cr[1 + 0 * 4] = ((cmBodyBuf[1 + 24] << 6) |
-			(cmBodyBuf[0 + 24] >> 10)) & 0x3ff;
-		blk8x4Cb[2 + 0 * 4] = ((cmBodyBuf[1 + 24] >> 4)) & 0x3ff;
-		blk8x4Cr[2 + 0 * 4] = ((cmBodyBuf[2 + 24] << 2) |
-			(cmBodyBuf[1 + 24] >> 14)) & 0x3ff;
-		blk8x4Cb[3 + 0 * 4] = ((cmBodyBuf[3 + 24] << 8) |
-			(cmBodyBuf[2 + 24] >> 8)) & 0x3ff;
-		blk8x4Cr[3 + 0 * 4] = ((cmBodyBuf[3 + 24] >> 2)) & 0x3ff;
-		blk8x4Cb[1 + 1 * 4] = ((cmBodyBuf[4 + 24] << 4) |
-			(cmBodyBuf[3 + 24] >> 12)) & 0x3ff;
-		blk8x4Cr[1 + 1 * 4] = ((cmBodyBuf[4 + 24] >> 6)) & 0x3ff;
-		blk8x4Cb[2 + 1 * 4] = ((cmBodyBuf[5 + 24] >> 0)) & 0x3ff;
-		blk8x4Cr[2 + 1 * 4] = ((cmBodyBuf[6 + 24] << 6) |
-			(cmBodyBuf[5 + 24] >> 10)) & 0x3ff;
-		blk8x4Cb[3 + 1 * 4] = ((cmBodyBuf[6 + 24] >> 4)) & 0x3ff;
-		blk8x4Cr[3 + 1 * 4] = ((cmBodyBuf[7 + 24] << 2) |
-			(cmBodyBuf[6 + 24] >> 14)) & 0x3ff;
-	} else {
-		cmBodyBuf[0 + 8 * 0] = (blk8x4Luma[3 + 1 * 8] << 10) |
-			blk8x4Luma[3 + 0 * 8];
-		cmBodyBuf[1 + 8 * 0] = (blk8x4Luma[3 + 3 * 8] << 14) |
-			(blk8x4Luma[3 + 2 * 8] << 4) | (blk8x4Luma[3 + 1 * 8] >> 6);
-		cmBodyBuf[2 + 8 * 0] = (blk8x4Luma[7 + 0 * 8] << 8) |
-			(blk8x4Luma[3 + 3 * 8] >> 2);
-		cmBodyBuf[3 + 8 * 0] = (blk8x4Luma[7 + 2 * 8] << 12) |
-			(blk8x4Luma[7 + 1 * 8] << 2) | (blk8x4Luma[7 + 0 * 8] >>8);
-		cmBodyBuf[4 + 8 * 0] = (blk8x4Luma[7 + 3 * 8] << 6) |
-			(blk8x4Luma[7 + 2 * 8] >>4);
-		cmBodyBuf[5 + 8 * 0] = (blk8x4Cr[0 + 0 * 4] << 10) |
-			blk8x4Cb[0 + 0 * 4];
-		cmBodyBuf[6 + 8 * 0] = (blk8x4Cr[0 + 1 * 4] << 14) |
-			(blk8x4Cb[0 + 1 * 4] << 4)   | (blk8x4Cr[0 + 0 * 4] >> 6);
-		cmBodyBuf[7 + 8 * 0] = (0<< 8) | (blk8x4Cr[0 + 1 * 4] >> 2);
+		val0 = cmBodyBuf[0];
+		val1 = cmBodyBuf[1];
+		val2 = cmBodyBuf[2];
+		val3 = cmBodyBuf[3];
+		val4 = cmBodyBuf[4];
+		val5 = cmBodyBuf[5];
+		val6 = cmBodyBuf[6];
+		val7 = cmBodyBuf[7];
 
-		cmBodyBuf[0 + 8 * 1] = (blk8x4Luma[1 + 0 * 8] << 10) |
-			blk8x4Luma[0 + 0 * 8];
-		cmBodyBuf[1 + 8 * 1] = (blk8x4Luma[0 + 1 * 8] << 14) |
-			(blk8x4Luma[2 + 0 * 8] << 4) | (blk8x4Luma[1 + 0 * 8] >> 6);
-		cmBodyBuf[2 + 8 * 1] = (blk8x4Luma[1 + 1 * 8] << 8) |
-			(blk8x4Luma[0 + 1 * 8] >> 2);
-		cmBodyBuf[3 + 8 * 1] = (blk8x4Luma[0 + 2 * 8] << 12) |
-			(blk8x4Luma[2 + 1 * 8] << 2) | (blk8x4Luma[1 + 1 * 8] >>8);
-		cmBodyBuf[4 + 8 * 1] = (blk8x4Luma[1 + 2 * 8] << 6) |
-			(blk8x4Luma[0 + 2 * 8] >>4);
-		cmBodyBuf[5 + 8 * 1] = (blk8x4Luma[0 + 3 * 8] << 10) |
-			blk8x4Luma[2 + 2 * 8];
-		cmBodyBuf[6 + 8 * 1] = (blk8x4Luma[2 + 3 * 8] << 14) |
-			(blk8x4Luma[1 + 3 * 8] << 4) | (blk8x4Luma[0 + 3 * 8] >> 6);
-		cmBodyBuf[7 + 8 * 1] = (0<< 8) | (blk8x4Luma[2 + 3 * 8] >> 2);
+		blk8x4Luma[3 + 0 * 8] = (val0 >> 0) & mask;
+		blk8x4Luma[3 + 1 * 8] = ((val1 << 6) | (val0 >> 10)) & mask;
+		blk8x4Luma[3 + 2 * 8] = (val1 >> 4) & mask;
+		blk8x4Luma[3 + 3 * 8] = ((val2 << 2) | (val1 >> 14)) & mask;
+		blk8x4Luma[7 + 0 * 8] = ((val3 << 8) | (val2 >> 8)) & mask;
+		blk8x4Luma[7 + 1 * 8] = (val3 >> 2) & mask;
+		blk8x4Luma[7 + 2 * 8] = ((val4 << 4) | (val3 >> 12)) & mask;
+		blk8x4Luma[7 + 3 * 8] = (val4 >> 6) & mask;
+		blk8x4Cb[0 + 0 * 4] = (val5 >> 0) & mask;
+		blk8x4Cr[0 + 0 * 4] = ((val6 << 6) | (val5 >> 10)) & mask;
+		blk8x4Cb[0 + 1 * 4] = (val6 >> 4) & mask;
+		blk8x4Cr[0 + 1 * 4] = ((val7 << 2) | (val6 >> 14)) & mask;
 
-		cmBodyBuf[0 + 8 * 2] = (blk8x4Luma[5 + 0 * 8] << 10) |
-			blk8x4Luma[4 + 0 * 8];
-		cmBodyBuf[1 + 8 * 2] = (blk8x4Luma[4 + 1 * 8] << 14) |
-			(blk8x4Luma[6 + 0 * 8] << 4) | (blk8x4Luma[5 + 0 * 8] >> 6);
-		cmBodyBuf[2 + 8 * 2] = (blk8x4Luma[5 + 1 * 8] << 8) |
-			(blk8x4Luma[4 + 1 * 8] >> 2);
-		cmBodyBuf[3 + 8 * 2] = (blk8x4Luma[4 + 2 * 8] << 12) |
-			(blk8x4Luma[6 + 1 * 8] << 2) | (blk8x4Luma[5 + 1 * 8] >>8);
-		cmBodyBuf[4 + 8 * 2] = (blk8x4Luma[5 + 2 * 8] << 6) |
-			(blk8x4Luma[4 + 2 * 8] >>4);
-		cmBodyBuf[5 + 8 * 2] = (blk8x4Luma[4 + 3 * 8] << 10) |
-			blk8x4Luma[6 + 2 * 8];
-		cmBodyBuf[6 + 8 * 2] = (blk8x4Luma[6 + 3 * 8] << 14) |
-			(blk8x4Luma[5 + 3 * 8] << 4) | (blk8x4Luma[4 + 3 * 8] >> 6);
-		cmBodyBuf[7 + 8 * 2] = (0<< 8) | (blk8x4Luma[6 + 3 * 8] >> 2);
+		// Block 2
+		val0 = cmBodyBuf[0 + 8];
+		val1 = cmBodyBuf[1 + 8];
+		val2 = cmBodyBuf[2 + 8];
+		val3 = cmBodyBuf[3 + 8];
+		val4 = cmBodyBuf[4 + 8];
+		val5 = cmBodyBuf[5 + 8];
+		val6 = cmBodyBuf[6 + 8];
+		val7 = cmBodyBuf[7 + 8];
 
-		cmBodyBuf[0 + 8 * 3] = (blk8x4Cr[1 + 0 * 4] << 10) |
-			blk8x4Cb[1 + 0 * 4];
-		cmBodyBuf[1 + 8 * 3] = (blk8x4Cr[2 + 0 * 4] << 14) |
-			(blk8x4Cb[2 + 0 * 4] << 4) | (blk8x4Cr[1 + 0 * 4] >> 6);
-		cmBodyBuf[2 + 8 * 3] = (blk8x4Cb[3 + 0 * 4] << 8) |
-			(blk8x4Cr[2 + 0 * 4] >> 2);
-		cmBodyBuf[3 + 8 * 3] = (blk8x4Cb[1 + 1 * 4] << 12) |
-			(blk8x4Cr[3 + 0 * 4] << 2) | (blk8x4Cb[3 + 0 * 4] >>8);
-		cmBodyBuf[4 + 8 * 3] = (blk8x4Cr[1 + 1 * 4] << 6) |
-			(blk8x4Cb[1 + 1 * 4] >>4);
-		cmBodyBuf[5 + 8 * 3] = (blk8x4Cr[2 + 1 * 4] << 10) |
-			blk8x4Cb[2 + 1 * 4];
-		cmBodyBuf[6 + 8 * 3] = (blk8x4Cr[3 + 1 * 4] << 14) |
-			(blk8x4Cb[3 + 1 * 4] << 4) | (blk8x4Cr[2 + 1 * 4] >> 6);
-		cmBodyBuf[7 + 8 * 3] = (0 << 8) | (blk8x4Cr[3 + 1 * 4] >> 2);
+		blk8x4Luma[0 + 0 * 8] = (val0 >> 0) & mask;
+		blk8x4Luma[1 + 0 * 8] = ((val1 << 6) | (val0 >> 10)) & mask;
+		blk8x4Luma[2 + 0 * 8] = (val1 >> 4) & mask;
+		blk8x4Luma[0 + 1 * 8] = ((val2 << 2) | (val1 >> 14)) & mask;
+		blk8x4Luma[1 + 1 * 8] = ((val3 << 8) | (val2 >> 8)) & mask;
+		blk8x4Luma[2 + 1 * 8] = (val3 >> 2) & mask;
+		blk8x4Luma[0 + 2 * 8] = ((val4 << 4) | (val3 >> 12)) & mask;
+		blk8x4Luma[1 + 2 * 8] = (val4 >> 6) & mask;
+		blk8x4Luma[2 + 2 * 8] = (val5 >> 0) & mask;
+		blk8x4Luma[0 + 3 * 8] = ((val6 << 6) | (val5 >> 10)) & mask;
+		blk8x4Luma[1 + 3 * 8] = (val6 >> 4) & mask;
+		blk8x4Luma[2 + 3 * 8] = ((val7 << 2) | (val6 >> 14)) & mask;
+
+		// Block 3
+		val0 = cmBodyBuf[0 + 16];
+		val1 = cmBodyBuf[1 + 16];
+		val2 = cmBodyBuf[2 + 16];
+		val3 = cmBodyBuf[3 + 16];
+		val4 = cmBodyBuf[4 + 16];
+		val5 = cmBodyBuf[5 + 16];
+		val6 = cmBodyBuf[6 + 16];
+		val7 = cmBodyBuf[7 + 16];
+		
+		blk8x4Luma[4 + 0 * 8] = (val0 >> 0) & mask;
+		blk8x4Luma[5 + 0 * 8] = ((val1 << 6) | (val0 >> 10)) & mask;
+		blk8x4Luma[6 + 0 * 8] = (val1 >> 4) & mask;
+		blk8x4Luma[4 + 1 * 8] = ((val2 << 2) | (val1 >> 14)) & mask;
+		blk8x4Luma[5 + 1 * 8] = ((val3 << 8) | (val2 >> 8)) & mask;
+		blk8x4Luma[6 + 1 * 8] = (val3 >> 2) & mask;
+		blk8x4Luma[4 + 2 * 8] = ((val4 << 4) | (val3 >> 12)) & mask;
+		blk8x4Luma[5 + 2 * 8] = (val4 >> 6) & mask;
+		blk8x4Luma[6 + 2 * 8] = (val5 >> 0) & mask;
+		blk8x4Luma[4 + 3 * 8] = ((val6 << 6) | (val5 >> 10)) & mask;
+		blk8x4Luma[5 + 3 * 8] = (val6 >> 4) & mask;
+		blk8x4Luma[6 + 3 * 8] = ((val7 << 2) | (val6 >> 14)) & mask;
+
+		// Block 4
+		val0 = cmBodyBuf[0 + 24];
+		val1 = cmBodyBuf[1 + 24];
+		val2 = cmBodyBuf[2 + 24];
+		val3 = cmBodyBuf[3 + 24];
+		val4 = cmBodyBuf[4 + 24];
+		val5 = cmBodyBuf[5 + 24];
+		val6 = cmBodyBuf[6 + 24];
+		val7 = cmBodyBuf[7 + 24];
+		
+		blk8x4Cb[1 + 0 * 4] = (val0 >> 0) & mask;
+		blk8x4Cr[1 + 0 * 4] = ((val1 << 6) | (val0 >> 10)) & mask;
+		blk8x4Cb[2 + 0 * 4] = (val1 >> 4) & mask;
+		blk8x4Cr[2 + 0 * 4] = ((val2 << 2) | (val1 >> 14)) & mask;
+		blk8x4Cb[3 + 0 * 4] = ((val3 << 8) | (val2 >> 8)) & mask;
+		blk8x4Cr[3 + 0 * 4] = (val3 >> 2) & mask;
+		blk8x4Cb[1 + 1 * 4] = ((val4 << 4) | (val3 >> 12)) & mask;
+		blk8x4Cr[1 + 1 * 4] = (val4 >> 6) & mask;
+		blk8x4Cb[2 + 1 * 4] = (val5 >> 0) & mask;
+		blk8x4Cr[2 + 1 * 4] = ((val6 << 6) | (val5 >> 10)) & mask;
+		blk8x4Cb[3 + 1 * 4] = (val6 >> 4) & mask;
+		blk8x4Cr[3 + 1 * 4] = ((val7 << 2) | (val6 >> 14)) & mask;
+
+	} else { // Direction 1 - YUV to cmBodyBuf
+
+		uint16_t luma_3_0 = blk8x4Luma[3 + 0 * 8];
+		uint16_t luma_3_1 = blk8x4Luma[3 + 1 * 8];
+		uint16_t luma_3_2 = blk8x4Luma[3 + 2 * 8];
+		uint16_t luma_3_3 = blk8x4Luma[3 + 3 * 8];
+		uint16_t luma_7_0 = blk8x4Luma[7 + 0 * 8];
+		uint16_t luma_7_1 = blk8x4Luma[7 + 1 * 8];
+		uint16_t luma_7_2 = blk8x4Luma[7 + 2 * 8];
+		uint16_t luma_7_3 = blk8x4Luma[7 + 3 * 8];
+
+		uint16_t cb_0_0 = blk8x4Cb[0 + 0 * 4];
+		uint16_t cr_0_0 = blk8x4Cr[0 + 0 * 4];
+		uint16_t cb_0_1 = blk8x4Cb[0 + 1 * 4];
+		uint16_t cr_0_1 = blk8x4Cr[0 + 1 * 4];
+
+		cmBodyBuf[0 + 8 * 0] = (luma_3_1 << 10) | luma_3_0;
+		cmBodyBuf[1 + 8 * 0] = (luma_3_3 << 14) | (luma_3_2 << 4) | (luma_3_1 >> 6);
+		cmBodyBuf[2 + 8 * 0] = (luma_7_0 << 8) | (luma_3_3 >> 2);
+		cmBodyBuf[3 + 8 * 0] = (luma_7_2 << 12) | (luma_7_1 << 2) | (luma_7_0 >> 8);
+		cmBodyBuf[4 + 8 * 0] = (luma_7_3 << 6) | (luma_7_2 >> 4);
+		cmBodyBuf[5 + 8 * 0] = (cr_0_0 << 10) | cb_0_0;
+		cmBodyBuf[6 + 8 * 0] = (cr_0_1 << 14) | (cb_0_1 << 4) | (cr_0_0 >> 6);
+		cmBodyBuf[7 + 8 * 0] = (0 << 8) | (cr_0_1 >> 2);
+
+		// Block 2
+		uint16_t luma_0_0 = blk8x4Luma[0 + 0 * 8];
+		uint16_t luma_1_0 = blk8x4Luma[1 + 0 * 8];
+		uint16_t luma_2_0 = blk8x4Luma[2 + 0 * 8];
+		uint16_t luma_0_1 = blk8x4Luma[0 + 1 * 8];
+		uint16_t luma_1_1 = blk8x4Luma[1 + 1 * 8];
+		uint16_t luma_2_1 = blk8x4Luma[2 + 1 * 8];
+		uint16_t luma_0_2 = blk8x4Luma[0 + 2 * 8];
+		uint16_t luma_1_2 = blk8x4Luma[1 + 2 * 8];
+		uint16_t luma_2_2 = blk8x4Luma[2 + 2 * 8];
+		uint16_t luma_0_3 = blk8x4Luma[0 + 3 * 8];
+		uint16_t luma_1_3 = blk8x4Luma[1 + 3 * 8];
+		uint16_t luma_2_3 = blk8x4Luma[2 + 3 * 8];
+
+		cmBodyBuf[0 + 8 * 1] = (luma_1_0 << 10) | luma_0_0;
+		cmBodyBuf[1 + 8 * 1] = (luma_0_1 << 14) | (luma_2_0 << 4) | (luma_1_0 >> 6);
+		cmBodyBuf[2 + 8 * 1] = (luma_1_1 << 8) | (luma_0_1 >> 2);
+		cmBodyBuf[3 + 8 * 1] = (luma_0_2 << 12) | (luma_2_1 << 2) | (luma_1_1 >> 8);
+		cmBodyBuf[4 + 8 * 1] = (luma_1_2 << 6) | (luma_0_2 >> 4);
+		cmBodyBuf[5 + 8 * 1] = (luma_0_3 << 10) | luma_2_2;
+		cmBodyBuf[6 + 8 * 1] = (luma_2_3 << 14) | (luma_1_3 << 4) | (luma_0_3 >> 6);
+		cmBodyBuf[7 + 8 * 1] = (0 << 8) | (luma_2_3 >> 2);
+
+		// Block 3
+		uint16_t luma_4_0 = blk8x4Luma[4 + 0 * 8];
+		uint16_t luma_5_0 = blk8x4Luma[5 + 0 * 8];
+		uint16_t luma_6_0 = blk8x4Luma[6 + 0 * 8];
+		uint16_t luma_4_1 = blk8x4Luma[4 + 1 * 8];
+		uint16_t luma_5_1 = blk8x4Luma[5 + 1 * 8];
+		uint16_t luma_6_1 = blk8x4Luma[6 + 1 * 8];
+		uint16_t luma_4_2 = blk8x4Luma[4 + 2 * 8];
+		uint16_t luma_5_2 = blk8x4Luma[5 + 2 * 8];
+		uint16_t luma_6_2 = blk8x4Luma[6 + 2 * 8];
+		uint16_t luma_4_3 = blk8x4Luma[4 + 3 * 8];
+		uint16_t luma_5_3 = blk8x4Luma[5 + 3 * 8];
+		uint16_t luma_6_3 = blk8x4Luma[6 + 3 * 8];
+
+		cmBodyBuf[0 + 8 * 2] = (luma_5_0 << 10) | luma_4_0;
+		cmBodyBuf[1 + 8 * 2] = (luma_4_1 << 14) | (luma_6_0 << 4) | (luma_5_0 >> 6);
+		cmBodyBuf[2 + 8 * 2] = (luma_5_1 << 8) | (luma_4_1 >> 2);
+		cmBodyBuf[3 + 8 * 2] = (luma_4_2 << 12) | (luma_6_1 << 2) | (luma_5_1 >> 8);
+		cmBodyBuf[4 + 8 * 2] = (luma_5_2 << 6) | (luma_4_2 >> 4);
+		cmBodyBuf[5 + 8 * 2] = (luma_4_3 << 10) | luma_6_2;
+		cmBodyBuf[6 + 8 * 2] = (luma_6_3 << 14) | (luma_5_3 << 4) | (luma_4_3 >> 6);
+		cmBodyBuf[7 + 8 * 2] = (0 << 8) | (luma_6_3 >> 2);
+
+		// Block 4
+		uint16_t cb_1_0 = blk8x4Cb[1 + 0 * 4];
+		uint16_t cr_1_0 = blk8x4Cr[1 + 0 * 4];
+		uint16_t cb_2_0 = blk8x4Cb[2 + 0 * 4];
+		uint16_t cr_2_0 = blk8x4Cr[2 + 0 * 4];
+		uint16_t cb_3_0 = blk8x4Cb[3 + 0 * 4];
+		uint16_t cr_3_0 = blk8x4Cr[3 + 0 * 4];
+		uint16_t cb_1_1 = blk8x4Cb[1 + 1 * 4];
+		uint16_t cr_1_1 = blk8x4Cr[1 + 1 * 4];
+		uint16_t cb_2_1 = blk8x4Cb[2 + 1 * 4];
+		uint16_t cr_2_1 = blk8x4Cr[2 + 1 * 4];
+		uint16_t cb_3_1 = blk8x4Cb[3 + 1 * 4];
+		uint16_t cr_3_1 = blk8x4Cr[3 + 1 * 4];
+
+		cmBodyBuf[0 + 8 * 3] = (cr_1_0 << 10) | cb_1_0;
+		cmBodyBuf[1 + 8 * 3] = (cr_2_0 << 14) | (cb_2_0 << 4) | (cr_1_0 >> 6);
+		cmBodyBuf[2 + 8 * 3] = (cb_3_0 << 8) | (cr_2_0 >> 2);
+		cmBodyBuf[3 + 8 * 3] = (cb_1_1 << 12) | (cr_3_0 << 2) | (cb_3_0 >> 8);
+		cmBodyBuf[4 + 8 * 3] = (cr_1_1 << 6) | (cb_1_1 >> 4);
+		cmBodyBuf[5 + 8 * 3] = (cr_2_1 << 10) | cb_2_1;
+		cmBodyBuf[6 + 8 * 3] = (cr_3_1 << 14) | (cb_3_1 << 4) | (cr_2_1 >> 6);
+		cmBodyBuf[7 + 8 * 3] = (0 << 8) | (cr_3_1 >> 2);
 	}
 }
 
