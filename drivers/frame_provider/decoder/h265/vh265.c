@@ -6658,21 +6658,9 @@ static void set_aux_data(struct hevc_state_s *hevc,
 					else
 						valid_tag = 0;
 					if (valid_tag && len > 0) {
-						pic->aux_data_size +=
-						(len + 8);
-						h[0] = (len >> 24)
-						& 0xff;
-						h[1] = (len >> 16)
-						& 0xff;
-						h[2] = (len >> 8)
-						& 0xff;
-						h[3] = (len >> 0)
-						& 0xff;
-						h[6] =
-						(padding_len >> 8)
-						& 0xff;
-						h[7] = (padding_len)
-						& 0xff;
+						pic->aux_data_size += (len + 8);
+						put_unaligned_be32(len, h);
+						put_unaligned_be16(padding_len, h + 6);
 						h += (len + 8);
 						p += 8;
 						len = 0;
@@ -8584,6 +8572,7 @@ static int parse_sei(struct hevc_state_s *hevc,
 		
 		if (p+payload_size <= sei_buf+size) {
 			switch (payload_type) {
+
 			case SEI_PicTiming:
 				if ((parser_sei_enable & 0x4) &&
 					hevc->frame_field_info_present_flag) {
@@ -8598,6 +8587,7 @@ static int parse_sei(struct hevc_state_s *hevc,
 					}
 				}
 				break;
+
 			case SEI_UserDataITU_T_T35:
 				p_sei = p;
 				if (p_sei[0] == 0xB5
@@ -8642,32 +8632,26 @@ static int parse_sei(struct hevc_state_s *hevc,
 				}
 
 				break;
+
 			case SEI_MasteringDisplayColorVolume:
 				p_sei = p;
 				for (i = 0; i < 3; i++) {
 					for (j = 0; j < 2; j++) {
-						hevc->primaries[i][j]
-							= (*p_sei<<8)
-							| *(p_sei+1);
+						hevc->primaries[i][j] = get_unaligned_be16(p_sei);
 						p_sei += 2;
 					}
 				}
 				for (i = 0; i < 2; i++) {
-					hevc->white_point[i]
-						= (*p_sei<<8)
-						| *(p_sei+1);
+					hevc->white_point[i] = get_unaligned_be16(p_sei);
 					p_sei += 2;
 				}
 				for (i = 0; i < 2; i++) {
-					hevc->luminance[i]
-						= (*p_sei<<24)
-						| (*(p_sei+1)<<16)
-						| (*(p_sei+2)<<8)
-						| *(p_sei+3);
+					hevc->luminance[i] = get_unaligned_be32(p_sei);
 					p_sei += 4;
 				}
 				hevc->sei_present_flag |= SEI_MASTER_DISPLAY_COLOR_MASK;
 				break;
+
 			case SEI_ContentLightLevel:
 				if (get_dbg_flag(hevc) & H265_DEBUG_PRINT_SEI)
 					hevc_print(hevc, 0,
@@ -8675,14 +8659,10 @@ static int parse_sei(struct hevc_state_s *hevc,
 					payload_type, payload_size);
 				/* content_light_level */
 				p_sei = p;
-				hevc->content_light_level[0]
-					= (*p_sei<<8) | *(p_sei+1);
+				hevc->content_light_level[0] = get_unaligned_be16(p_sei);
 				p_sei += 2;
-				hevc->content_light_level[1]
-					= (*p_sei<<8) | *(p_sei+1);
-				p_sei += 2;
-				hevc->sei_present_flag |=
-					SEI_CONTENT_LIGHT_LEVEL_MASK;
+				hevc->content_light_level[1] = get_unaligned_be16(p_sei);
+				hevc->sei_present_flag |= SEI_CONTENT_LIGHT_LEVEL_MASK;
 				if (get_dbg_flag(hevc) & H265_DEBUG_PRINT_SEI)
 					hevc_print(hevc, 0,
 						"\tmax cll = %04x, max_pa_cll = %04x\n",
@@ -8761,31 +8741,28 @@ void alt_hlg_parse_sei(struct hevc_state_s *hevc, unsigned char* input, size_t i
 static void process_mdcv_sei(struct hevc_state_s *hevc, const unsigned char* data) {
 
   const unsigned char* p_sei = data;
-	int color;
-	int coord;
-	int type;
+  int color;
+  int coord;
+  int type;
 
   // Process display primaries (RGB coordinates)
   for (color = 0; color < 3; color++) {
     for (coord = 0; coord < 2; coord++) {
-      hevc->primaries[color][coord] = (p_sei[0] << 8) | p_sei[1];
+      hevc->primaries[color][coord] = get_unaligned_be16(p_sei);
       p_sei += 2;
     }
   }
 
   // Process white point coordinates
   for (coord = 0; coord < 2; coord++) {
-    hevc->white_point[coord] = (p_sei[0] << 8) | p_sei[1];
+    hevc->white_point[coord] = get_unaligned_be16(p_sei);
     p_sei += 2;
   }
 
   // Process min/max luminance values
   for (type = 0; type < 2; type++) {
-    hevc->luminance[type] = (p_sei[0] << 24) | 
-                            (p_sei[1] << 16) |
-                            (p_sei[2] << 8)  |
-                             p_sei[3];
-  p_sei += 4;
+    hevc->luminance[type] = get_unaligned_be32(p_sei);
+    p_sei += 4;
   }
 
   hevc->sei_present_flag |= SEI_MASTER_DISPLAY_COLOR_MASK;
@@ -8794,14 +8771,14 @@ static void process_mdcv_sei(struct hevc_state_s *hevc, const unsigned char* dat
 static void process_cll_sei(struct hevc_state_s *hevc, const unsigned char* data) {
 
   const unsigned char* p_sei = data;
-    
+
   // Process max content light level
-  hevc->content_light_level[0] = (p_sei[0] << 8) | p_sei[1];
+  hevc->content_light_level[0] = get_unaligned_be16(p_sei);
   p_sei += 2;
-    
+
   // Process max frame average light level
-  hevc->content_light_level[1] = (p_sei[0] << 8) | p_sei[1];
-    
+  hevc->content_light_level[1] = get_unaligned_be16(p_sei);
+
   hevc->sei_present_flag |= SEI_CONTENT_LIGHT_LEVEL_MASK;
 }
 
