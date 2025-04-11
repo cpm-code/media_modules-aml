@@ -217,7 +217,7 @@ enum vformat_t;
 /* stream based with single instance decoder driver */
 #define VDEC_TYPE_SINGLE           0
 
-/* stream based with multi-instance decoder with HW resouce sharing */
+/* stream based with multi-instance decoder with HW resource sharing */
 #define VDEC_TYPE_STREAM_PARSER    1
 
 /* frame based with multi-instance decoder, input block list based */
