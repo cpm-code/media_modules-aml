@@ -668,7 +668,7 @@ static struct vframe_block_list_s *
 			input->id,
 			input->size,
 			input->block_nums);
-		pr_info("level:%d, wr:%lld,rd:%lld\n",
+		pr_info("level:%d, wr:%d,rd:%d\n",
 			vdec_input_level(input),
 			input->total_wr_count,
 			input->total_rd_count);
