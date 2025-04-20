@@ -826,42 +826,6 @@ static void vdec_update_buff_status(void)
 	vdec_inputbuff_unlock(core, flags);
 }
 
-#if 0
-void vdec_update_streambuff_status(void)
-{
-	struct vdec_core_s *core = vdec_core;
-	struct vdec_s *vdec;
-
-	/* check streaming prepare level threshold if not EOS */
-	list_for_each_entry(vdec, &core->connected_vdec_list, list) {
-		struct vdec_input_s *input = &vdec->input;
-		if (input && input_stream_based(input) && !input->eos &&
-			(vdec->need_more_data & VDEC_NEED_MORE_DATA)) {
-			u32 rp, wp, level;
-
-			rp = STBUF_READ(&vdec->vbuf, get_rp);
-			wp = STBUF_READ(&vdec->vbuf, get_wp);
-			if (wp < rp)
-				level = input->size + wp - rp;
-			else
-				level = wp - rp;
-			if ((level < input->prepare_level) &&
-				(pts_get_rec_num(PTS_TYPE_VIDEO,
-					vdec->input.total_rd_count) < 2)) {
-				break;
-			} else if (level > input->prepare_level) {
-				vdec->need_more_data &= ~VDEC_NEED_MORE_DATA;
-				if (debug & 8)
-					pr_info("vdec_flush_streambuff_status up\n");
-				vdec_up(vdec);
-			}
-			break;
-		}
-	}
-}
-EXPORT_SYMBOL(vdec_update_streambuff_status);
-#endif
-
 int vdec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
 {
 	if (vdec && vdec->dec_status &&
@@ -1310,48 +1274,56 @@ static void vdec_sync_input_read(struct vdec_s *vdec)
 	if (!vdec_stream_based(vdec))
 		return;
 
-	if (vdec_dual(vdec)) {
+	if (vdec_dual(vdec))
+	{
 		u32 me, other;
-		if (vdec->input.target == VDEC_INPUT_TARGET_VLD) {
+
+		if (vdec->input.target == VDEC_INPUT_TARGET_VLD)
+		{
 			me = READ_VREG(VLD_MEM_VIFIFO_WRAP_COUNT);
-			other =
-				vdec_get_associate(vdec)->input.stream_cookie;
+			other = vdec_get_associate(vdec)->input.stream_cookie;
+
 			if (me > other)
 				return;
-			else if (me == other) {
+			else if (me == other)
+			{
 				me = READ_VREG(VLD_MEM_VIFIFO_RP);
-				other =
-				vdec_get_associate(vdec)->input.swap_rp;
-				if (me > other) {
-					STBUF_WRITE(&vdec->vbuf, set_rp,
-						vdec_get_associate(vdec)->input.swap_rp);
+				other = vdec_get_associate(vdec)->input.swap_rp;
+				if (me > other)
+				{
+					STBUF_WRITE(&vdec->vbuf, set_rp, vdec_get_associate(vdec)->input.swap_rp);
 					return;
 				}
 			}
 
-			STBUF_WRITE(&vdec->vbuf, set_rp,
-				READ_VREG(VLD_MEM_VIFIFO_RP));
-		} else if (vdec->input.target == VDEC_INPUT_TARGET_HEVC) {
+			STBUF_WRITE(&vdec->vbuf, set_rp, READ_VREG(VLD_MEM_VIFIFO_RP));
+		}
+		else if (vdec->input.target == VDEC_INPUT_TARGET_HEVC)
+		{
 			me = READ_VREG(HEVC_SHIFT_BYTE_COUNT);
-			if (((me & 0x80000000) == 0) &&
-				(vdec->input.streaming_rp & 0x80000000))
+
+			// This looks like does nothing? as u32 : TODO is software 64 needed?
+			if (((me & 0x80000000) == 0) && (vdec->input.streaming_rp & 0x80000000))
 				me += 1ULL << 32;
+
 			other = vdec_get_associate(vdec)->input.streaming_rp;
-			if (me > other) {
-				STBUF_WRITE(&vdec->vbuf, set_rp,
-					vdec_get_associate(vdec)->input.swap_rp);
+
+			if (me > other)
+			{
+				STBUF_WRITE(&vdec->vbuf, set_rp, vdec_get_associate(vdec)->input.swap_rp);
 				return;
 			}
 
-			STBUF_WRITE(&vdec->vbuf, set_rp,
-				READ_VREG(HEVC_STREAM_RD_PTR));
+			STBUF_WRITE(&vdec->vbuf, set_rp, READ_VREG(HEVC_STREAM_RD_PTR));
 		}
-	} else if (vdec->input.target == VDEC_INPUT_TARGET_VLD) {
-		STBUF_WRITE(&vdec->vbuf, set_rp,
-			READ_VREG(VLD_MEM_VIFIFO_RP));
-	} else if (vdec->input.target == VDEC_INPUT_TARGET_HEVC) {
-		STBUF_WRITE(&vdec->vbuf, set_rp,
-			READ_VREG(HEVC_STREAM_RD_PTR));
+	}
+	else if (vdec->input.target == VDEC_INPUT_TARGET_VLD)
+	{
+		STBUF_WRITE(&vdec->vbuf, set_rp, READ_VREG(VLD_MEM_VIFIFO_RP));
+	}
+	else if (vdec->input.target == VDEC_INPUT_TARGET_HEVC)
+	{
+		STBUF_WRITE(&vdec->vbuf, set_rp, READ_VREG(HEVC_STREAM_RD_PTR));
 	}
 }
 
@@ -1465,7 +1437,8 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 	int dummy;
 
 	/* full reset to HW input */
-	if (input->target == VDEC_INPUT_TARGET_VLD) {
+	if (input->target == VDEC_INPUT_TARGET_VLD)
+	{
 		WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 0);
 
 		/* reset VLD fifo for all vdec */
@@ -1474,32 +1447,6 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 		if (get_cpu_major_id() < AM_MESON_CPU_MAJOR_ID_SC2)
 			dummy = READ_RESET_REG(RESET0_REGISTER);
 		WRITE_VREG(POWER_CTL_VLD, 1 << 4);
-	} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
-#if 0
-		/*move to driver*/
-		if (input_frame_based(input))
-			WRITE_VREG(HEVC_STREAM_CONTROL, 0);
-
-		/*
-		 * 2: assist
-		 * 3: parser
-		 * 4: parser_state
-		 * 8: dblk
-		 * 11:mcpu
-		 * 12:ccpu
-		 * 13:ddr
-		 * 14:iqit
-		 * 15:ipp
-		 * 17:qdct
-		 * 18:mpred
-		 * 19:sao
-		 * 24:hevc_afifo
-		 */
-		WRITE_VREG(DOS_SW_RESET3,
-			(1<<3)|(1<<4)|(1<<8)|(1<<11)|(1<<12)|(1<<14)|(1<<15)|
-			(1<<17)|(1<<18)|(1<<19));
-		WRITE_VREG(DOS_SW_RESET3, 0);
-#endif
 	}
 
 	/*
@@ -1574,84 +1521,75 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 		bool swap_valid = input->swap_valid;
 		unsigned long swap_page_phys = input->swap_page_phys;
 
-		if (vdec_dual(vdec) &&
-			((vdec->flag & VDEC_FLAG_SELF_INPUT_CONTEXT) == 0)) {
+		if (vdec_dual(vdec) && ((vdec->flag & VDEC_FLAG_SELF_INPUT_CONTEXT) == 0)) {
 			/* keep using previous input context */
-			struct vdec_s *master = (vdec->slave) ?
-				vdec : vdec->master;
+			struct vdec_s *master = (vdec->slave) ? vdec : vdec->master;
 		    if (master->input.last_swap_slave) {
 				swap_valid = master->slave->input.swap_valid;
-				swap_page_phys =
-					master->slave->input.swap_page_phys;
+				swap_page_phys = master->slave->input.swap_page_phys;
 			} else {
 				swap_valid = master->input.swap_valid;
 				swap_page_phys = master->input.swap_page_phys;
 			}
 		}
 
-		if (swap_valid) {
-			if (input->target == VDEC_INPUT_TARGET_VLD) {
+		if (swap_valid)
+		{
+			if (input->target == VDEC_INPUT_TARGET_VLD)
+			{
 				if (vdec->format == VFORMAT_H264)
-					SET_VREG_MASK(POWER_CTL_VLD,
-						(1 << 9));
+					SET_VREG_MASK(POWER_CTL_VLD, (1 << 9));
 
 				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 0);
 
 				/* restore read side */
-				WRITE_VREG(VLD_MEM_SWAP_ADDR,
-					swap_page_phys);
+				WRITE_VREG(VLD_MEM_SWAP_ADDR, swap_page_phys);
 				WRITE_VREG(VLD_MEM_SWAP_CTL, 1);
 
-				while (READ_VREG(VLD_MEM_SWAP_CTL) & (1<<7))
-					;
+				while (READ_VREG(VLD_MEM_SWAP_CTL) & (1<<7));
 				WRITE_VREG(VLD_MEM_SWAP_CTL, 0);
+
 #ifdef VDEC_FCC_SUPPORT
 				vdec_fcc_jump_back(vdec);
 #endif
 
 				/* restore wrap count */
-				WRITE_VREG(VLD_MEM_VIFIFO_WRAP_COUNT,
-					input->stream_cookie);
+				WRITE_VREG(VLD_MEM_VIFIFO_WRAP_COUNT, input->stream_cookie);
 
 				rp = READ_VREG(VLD_MEM_VIFIFO_RP);
 				fifo_len = READ_VREG(VLD_MEM_VIFIFO_LEVEL);
 
 				/* enable */
-				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL,
-					(0x11 << 16) | (1<<10));
+				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, (0x11 << 16) | (1<<10));
 
 				if (vdec->vbuf.no_parser)
-					SET_VREG_MASK(VLD_MEM_VIFIFO_CONTROL,
-						7 << 3);
+					SET_VREG_MASK(VLD_MEM_VIFIFO_CONTROL, 7 << 3);
 
 				/* sync with front end */
 				vdec_sync_input_read(vdec);
 				vdec_sync_input_write(vdec);
 
 				wp = READ_VREG(VLD_MEM_VIFIFO_WP);
-			} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
+			}
+			else if (input->target == VDEC_INPUT_TARGET_HEVC)
+			{
 				SET_VREG_MASK(HEVC_STREAM_CONTROL, 1);
 
 				/* restore read side */
-				WRITE_VREG(HEVC_STREAM_SWAP_ADDR,
-					swap_page_phys);
+				WRITE_VREG(HEVC_STREAM_SWAP_ADDR, swap_page_phys);
 				WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 1);
 
-				while (READ_VREG(HEVC_STREAM_SWAP_CTRL)
-					& (1<<7))
-					;
+				while (READ_VREG(HEVC_STREAM_SWAP_CTRL) & (1<<7));
+
 				WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 0);
 #ifdef VDEC_FCC_SUPPORT
 				vdec_fcc_jump_back(vdec);
 #endif
 				/* restore stream offset */
-				WRITE_VREG(HEVC_SHIFT_BYTE_COUNT,
-					input->stream_cookie);
+				WRITE_VREG(HEVC_SHIFT_BYTE_COUNT, input->stream_cookie);
 
 				rp = READ_VREG(HEVC_STREAM_RD_PTR);
-				fifo_len = (READ_VREG(HEVC_STREAM_FIFO_CTL)
-						>> 16) & 0x7f;
-
+				fifo_len = (READ_VREG(HEVC_STREAM_FIFO_CTL) >> 16) & 0x7f;
 
 				/* enable */
 
@@ -1662,12 +1600,13 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 				wp = READ_VREG(HEVC_STREAM_WR_PTR);
 
 				if (vdec->vbuf.no_parser)
-					SET_VREG_MASK(HEVC_STREAM_CONTROL,
-						7 << 4);
-				/*pr_info("vdec: restore context\r\n");*/
+					SET_VREG_MASK(HEVC_STREAM_CONTROL, 7 << 4);
 			}
 
-		} else {
+		}
+		else
+		{
+
 			if (vdec->vbuf.ext_buf_addr)
 				first_set_rp = STBUF_READ(&vdec->vbuf, get_rp);
 			else {
@@ -1677,13 +1616,11 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 					first_set_rp = input->start;
 			}
 
-			if (input->target == VDEC_INPUT_TARGET_VLD) {
-				WRITE_VREG(VLD_MEM_VIFIFO_START_PTR,
-					input->start);
-				WRITE_VREG(VLD_MEM_VIFIFO_END_PTR,
-					input->start + input->size - 8);
-				WRITE_VREG(VLD_MEM_VIFIFO_CURR_PTR,
-					first_set_rp);
+			if (input->target == VDEC_INPUT_TARGET_VLD)
+			{
+				WRITE_VREG(VLD_MEM_VIFIFO_START_PTR, input->start);
+				WRITE_VREG(VLD_MEM_VIFIFO_END_PTR, input->start + input->size - 8);
+				WRITE_VREG(VLD_MEM_VIFIFO_CURR_PTR, first_set_rp);
 
 				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 1);
 				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 0);
@@ -1691,35 +1628,27 @@ int vdec_prepare_input(struct vdec_s *vdec, struct vframe_chunk_s **p)
 				/* set to manual mode */
 				WRITE_VREG(VLD_MEM_VIFIFO_BUF_CNTL, 2);
 				WRITE_VREG(VLD_MEM_VIFIFO_RP, first_set_rp);
-				WRITE_VREG(VLD_MEM_VIFIFO_WP,
-					STBUF_READ(&vdec->vbuf, get_wp));
+				WRITE_VREG(VLD_MEM_VIFIFO_WP, STBUF_READ(&vdec->vbuf, get_wp));
 				rp = READ_VREG(VLD_MEM_VIFIFO_RP);
 
 				/* enable */
-				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL,
-					(0x11 << 16) | (1<<10));
+				WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, (0x11 << 16) | (1<<10));
 				if (vdec->vbuf.no_parser)
-					SET_VREG_MASK(VLD_MEM_VIFIFO_CONTROL,
-						7 << 3);
+					SET_VREG_MASK(VLD_MEM_VIFIFO_CONTROL, 7 << 3);
 
 				wp = READ_VREG(VLD_MEM_VIFIFO_WP);
-
-			} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
-				WRITE_VREG(HEVC_STREAM_START_ADDR,
-					input->start);
-				WRITE_VREG(HEVC_STREAM_END_ADDR,
-					input->start + input->size);
-				WRITE_VREG(HEVC_STREAM_RD_PTR,
-					first_set_rp);
-				WRITE_VREG(HEVC_STREAM_WR_PTR,
-					STBUF_READ(&vdec->vbuf, get_wp));
+			}
+			else if (input->target == VDEC_INPUT_TARGET_HEVC)
+			{
+				WRITE_VREG(HEVC_STREAM_START_ADDR, input->start);
+				WRITE_VREG(HEVC_STREAM_END_ADDR, input->start + input->size);
+				WRITE_VREG(HEVC_STREAM_RD_PTR, first_set_rp);
+				WRITE_VREG(HEVC_STREAM_WR_PTR, STBUF_READ(&vdec->vbuf, get_wp));
 				rp = READ_VREG(HEVC_STREAM_RD_PTR);
 				wp = READ_VREG(HEVC_STREAM_WR_PTR);
-				fifo_len = (READ_VREG(HEVC_STREAM_FIFO_CTL)
-						>> 16) & 0x7f;
+				fifo_len = (READ_VREG(HEVC_STREAM_FIFO_CTL) >> 16) & 0x7f;
 				if (vdec->vbuf.no_parser)
-					SET_VREG_MASK(HEVC_STREAM_CONTROL,
-						7 << 4);
+					SET_VREG_MASK(HEVC_STREAM_CONTROL, 7 << 4);
 				/* enable */
 			}
 		}
@@ -1975,56 +1904,52 @@ void vdec_save_input_context(struct vdec_s *vdec)
 	if (input->target == VDEC_INPUT_TARGET_VLD)
 		WRITE_VREG(VLD_MEM_VIFIFO_CONTROL, 1<<15);
 
-	if (input_stream_based(input) && (input->swap_needed)) {
-		if (input->target == VDEC_INPUT_TARGET_VLD) {
-			WRITE_VREG(VLD_MEM_SWAP_ADDR,
-				input->swap_page_phys);
+	if (input_stream_based(input) && (input->swap_needed))
+	{
+		if (input->target == VDEC_INPUT_TARGET_VLD)
+		{
+			WRITE_VREG(VLD_MEM_SWAP_ADDR, input->swap_page_phys);
 			WRITE_VREG(VLD_MEM_SWAP_CTL, 3);
-			while (READ_VREG(VLD_MEM_SWAP_CTL) & (1<<7))
-				;
+			while (READ_VREG(VLD_MEM_SWAP_CTL) & (1<<7));
 			WRITE_VREG(VLD_MEM_SWAP_CTL, 0);
-			vdec->input.stream_cookie =
-				READ_VREG(VLD_MEM_VIFIFO_WRAP_COUNT);
-			vdec->input.swap_rp =
-				READ_VREG(VLD_MEM_VIFIFO_RP);
-			vdec->input.total_rd_count =
-				(u64)vdec->input.stream_cookie *
-				vdec->input.size + vdec->input.swap_rp -
-				READ_VREG(VLD_MEM_VIFIFO_BYTES_AVAIL);
-		} else if (input->target == VDEC_INPUT_TARGET_HEVC) {
-			WRITE_VREG(HEVC_STREAM_SWAP_ADDR,
-				input->swap_page_phys);
+			vdec->input.stream_cookie = READ_VREG(VLD_MEM_VIFIFO_WRAP_COUNT);
+			vdec->input.swap_rp = READ_VREG(VLD_MEM_VIFIFO_RP);
+			vdec->input.total_rd_count = (u64)vdec->input.stream_cookie * vdec->input.size +
+			                             vdec->input.swap_rp - READ_VREG(VLD_MEM_VIFIFO_BYTES_AVAIL);
+		}
+		else if (input->target == VDEC_INPUT_TARGET_HEVC)
+		{
+			WRITE_VREG(HEVC_STREAM_SWAP_ADDR, input->swap_page_phys);
 			WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 3);
 
-			while (READ_VREG(HEVC_STREAM_SWAP_CTRL) & (1<<7))
-				;
+			while (READ_VREG(HEVC_STREAM_SWAP_CTRL) & (1<<7));
 			WRITE_VREG(HEVC_STREAM_SWAP_CTRL, 0);
 
-			vdec->input.stream_cookie =
-				READ_VREG(HEVC_SHIFT_BYTE_COUNT);
-			vdec->input.swap_rp =
-				READ_VREG(HEVC_STREAM_RD_PTR);
-			if (((vdec->input.stream_cookie & 0x80000000) == 0) &&
-				(vdec->input.streaming_rp & 0x80000000))
+			vdec->input.stream_cookie = READ_VREG(HEVC_SHIFT_BYTE_COUNT);
+			vdec->input.swap_rp = READ_VREG(HEVC_STREAM_RD_PTR);
+
+			if (((vdec->input.stream_cookie & 0x80000000) == 0) && (vdec->input.streaming_rp & 0x80000000))
 				vdec->input.streaming_rp += 1ULL << 32;
+
 			vdec->input.streaming_rp &= 0xffffffffULL << 32;
 			vdec->input.streaming_rp |= vdec->input.stream_cookie;
 			vdec->input.total_rd_count = vdec->input.streaming_rp;
+
 			hevc_wait_ddr();
 		}
 
 		input->swap_valid = true;
 		input->swap_needed = false;
-		/*pr_info("vdec: save context\r\n");*/
 
 		vdec_sync_input_read(vdec);
 
-		if (vdec_dual(vdec)) {
-			struct vdec_s *master = (vdec->slave) ?
-				vdec : vdec->master;
+		if (vdec_dual(vdec))
+		{
+			struct vdec_s *master = (vdec->slave)
+				? vdec
+				: vdec->master;
+
 			master->input.last_swap_slave = (master->slave == vdec);
-			/* pr_info("master->input.last_swap_slave = %d\n",
-				master->input.last_swap_slave); */
 		}
 	}
 }
