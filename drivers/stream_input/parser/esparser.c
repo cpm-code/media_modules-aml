@@ -341,8 +341,9 @@ s32 es_vpts_checkin_us64(struct stream_buf_s *buf, u64 us64)
 		passed = threadrw_dataoffset(buf);
 	else
 		passed = video_data_parsed;
-	return pts_checkin_offset_us64(PTS_TYPE_VIDEO, passed, us64);
 
+	//pr_info("[cpm-code] check-in passed [%u] pts [%llu]", passed, us64);
+	return pts_checkin_offset_us64(PTS_TYPE_VIDEO, passed, us64);
 }
 
 s32 es_apts_checkin_us64(struct stream_buf_s *buf, u64 us64)

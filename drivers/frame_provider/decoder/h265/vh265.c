@@ -8663,14 +8663,16 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 		}
 		else if (vdec->slave) // DV Slave (i.e. BL) - use streaming
 		{
-			hevc_print(hevc, H265_DEBUG_OUT_PTS, "call pts_lookup_offset_us64(0x%x)\n", stream_offset);
+			// use the hevc shift byte count, different at this point to the passed in pic stream (more accurate)
+			hevc_print(hevc, H265_DEBUG_OUT_PTS, "call pts_lookup_offset_us64(0x%x)\n", hevc->shift_byte_count_lo);
 			if ((vdec->vbuf.no_parser == 0) || (vdec->vbuf.use_ptsserv))
 			{
-				if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, stream_offset, &vf->pts, &frame_size, 0, &vf->pts_us64) != 0)
+				if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, hevc->shift_byte_count_lo, &vf->pts, &frame_size, 0, &vf->pts_us64) != 0)
 				{
 					vf->pts = 0;
 					vf->pts_us64 = 0;
 				}
+				// pr_info("[cpm-code] check-out shift [%u] pts [%llu]\n", hevc->shift_byte_count_lo, vf->pts_us64);
 			}
 		} else {
 			vf->pts = 0;
@@ -10650,9 +10652,11 @@ force_output:
 		}
 		else if (ret == 0)
 		{
+			if (hevc->cur_pic)
+				hevc->cur_pic->stream_offset = READ_VREG(HEVC_SHIFT_BYTE_COUNT);
+
 			if ((hevc->new_pic) && (hevc->cur_pic))
 			{
-				hevc->cur_pic->stream_offset = READ_VREG(HEVC_SHIFT_BYTE_COUNT);
 				hevc_print(hevc, H265_DEBUG_OUT_PTS, "read stream_offset = 0x%x\n", hevc->cur_pic->stream_offset);
 
 				hevc->cur_pic->aspect_ratio_idc = hevc->param.p.aspect_ratio_idc;
@@ -12892,7 +12896,7 @@ static void run(struct vdec_s *vdec, unsigned long mask, void (*callback)(struct
 	else
 	{
 		if (vdec->master || vdec->slave)
-			WRITE_VREG(HEVC_SHIFT_BYTE_COUNT, hevc->shift_byte_count_lo);  // TODO: why this offset here.
+			WRITE_VREG(HEVC_SHIFT_BYTE_COUNT, hevc->shift_byte_count_lo);
 	}
 
 	WRITE_VREG(HEVC_DECODE_SIZE, r);
