@@ -8667,7 +8667,10 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 			hevc_print(hevc, H265_DEBUG_OUT_PTS, "call pts_lookup_offset_us64(0x%x)\n", hevc->shift_byte_count_lo);
 			if ((vdec->vbuf.no_parser == 0) || (vdec->vbuf.use_ptsserv))
 			{
-				if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, hevc->shift_byte_count_lo, &vf->pts, &frame_size, 0, &vf->pts_us64) != 0)
+				u32 offset = hevc->shift_byte_count_lo;
+				offset = (offset > 4) ? (offset - 4) : offset;
+
+				if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, offset, &vf->pts, &frame_size, 0, &vf->pts_us64) != 0)
 				{
 					vf->pts = 0;
 					vf->pts_us64 = 0;
