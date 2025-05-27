@@ -109,19 +109,16 @@ u32 amstream_audio_reset = 0;
 #endif
 #define NO_VDEC2_INIT 1
 
-#define DEFAULT_VIDEO_BUFFER_SIZE       (1024 * 1024 * 10)
-#define DEFAULT_VIDEO_BUFFER_SIZE_4K       (1024 * 1024 * 15)
-#define DEFAULT_VIDEO_BUFFER_SIZE_TVP       (1024 * 1024 * 10)
-#define DEFAULT_VIDEO_BUFFER_SIZE_4K_TVP       (1024 * 1024 * 15)
+#define DEFAULT_VIDEO_BUFFER_SIZE         (16 * SZ_1M)
+#define DEFAULT_VIDEO_BUFFER_SIZE_4K      (32 * SZ_1M)
+#define DEFAULT_VIDEO_BUFFER_SIZE_TVP     (16 * SZ_1M)
+#define DEFAULT_VIDEO_BUFFER_SIZE_4K_TVP  (32 * SZ_1M)
 
+#define DEFAULT_AUDIO_BUFFER_SIZE         (1536 * SZ_1K)
+#define DEFAULT_SUBTITLE_BUFFER_SIZE      (256  * SZ_1K)
 
-#define DEFAULT_AUDIO_BUFFER_SIZE       (1024*768*2)
-#define DEFAULT_SUBTITLE_BUFFER_SIZE     (1024*256)
-
-static int def_4k_vstreambuf_sizeM =
-	(DEFAULT_VIDEO_BUFFER_SIZE_4K >> 20);
-static int def_vstreambuf_sizeM =
-	(DEFAULT_VIDEO_BUFFER_SIZE >> 20);
+static int def_4k_vstreambuf_sizeM = (DEFAULT_VIDEO_BUFFER_SIZE_4K >> 20);
+static int def_vstreambuf_sizeM = (DEFAULT_VIDEO_BUFFER_SIZE >> 20);
 static int slow_input;
 
 /* #define DATA_DEBUG */
