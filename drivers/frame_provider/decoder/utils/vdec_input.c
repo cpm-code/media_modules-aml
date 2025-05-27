@@ -28,31 +28,28 @@
 #include <asm/cacheflush.h>
 #include <linux/crc32.h>
 
-
-#define VFRAME_BLOCK_SIZE (512 * SZ_1K)/*512 for 1080p default init.*/
-#define VFRAME_BLOCK_SIZE_4K (2 * SZ_1M) /*2M for 4K default.*/
-#define VFRAME_BLOCK_SIZE_MAX (4 * SZ_1M)
+#define VFRAME_BLOCK_SIZE (768 * SZ_1K)           // 768KB for 1080p default
+#define VFRAME_BLOCK_SIZE_4K (3 * SZ_1M)          // 3MB for 4K default
+#define VFRAME_BLOCK_SIZE_MAX (6 * SZ_1M)         // 6MB for Max
 
 #define VFRAME_BLOCK_PAGEALIGN 4
-#define VFRAME_BLOCK_MIN_LEVEL (2 * SZ_1M)
-#define VFRAME_BLOCK_MAX_LEVEL (8 * SZ_1M)
-#define VFRAME_BLOCK_MAX_TOTAL_SIZE (16 * SZ_1M)
+#define VFRAME_BLOCK_MIN_LEVEL (2 * SZ_1M)        // 2Mb Min
+#define VFRAME_BLOCK_MAX_LEVEL (16 * SZ_1M)       // 16Mb Max
+#define VFRAME_BLOCK_MAX_TOTAL_SIZE (32 * SZ_1M)  // 32Mb Total Max
 
 /*
 2s for OMX
 */
 #define MAX_FRAME_DURATION_S 2
 
-
 #define VFRAME_BLOCK_HOLE (SZ_64K)
 
 #define MIN_FRAME_PADDING_SIZE ((u32)(L1_CACHE_BYTES))
 
-#define EXTRA_PADDING_SIZE  (16 * SZ_1K) /*HEVC_PADDING_SIZE*/
+#define EXTRA_PADDING_SIZE (16 * SZ_1K) /*HEVC_PADDING_SIZE*/
 
 #define MEM_NAME "VFRAME_INPUT"
 
-//static int vdec_input_get_duration_u64(struct vdec_input_s *input);
 static struct vframe_block_list_s *
 	vdec_input_alloc_new_block(struct vdec_input_s *input,
 	ulong phy_addr,
