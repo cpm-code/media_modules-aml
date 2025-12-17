@@ -12606,11 +12606,13 @@ static unsigned long run_ready(struct vdec_s *vdec, unsigned long mask)
 		if (ctx->param_sets_from_ucode)
 		{
 			if (hevc->v4l_params_parsed)
+			{
 				if (!ctx->v4l_codec_dpb_ready && v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx) < run_ready_min_buf_num)
 					ret = 0;
-			else
+			} else {
 				if (ctx->v4l_resolution_change)
 					ret = 0;
+			}
 		}
 		else if (!ctx->v4l_codec_dpb_ready)
 			if (v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx) < run_ready_min_buf_num)
