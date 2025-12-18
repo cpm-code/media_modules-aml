@@ -9497,10 +9497,10 @@ static void dolby_get_meta(struct hevc_state_s *hevc)
 	}
 	else if (vdec->master)
 	{
-		struct hevc_state_s *hevc_ba = (struct hevc_state_s *)vdec->master->private;
+		struct hevc_state_s *hevc_master = (struct hevc_state_s *)vdec->master->private;
 
-		/* do not use hevc_ba */
-		set_aux_data(hevc, hevc_ba->cur_pic, 0, 1);
+		/* do not use hevc_master */
+		set_aux_data(hevc, hevc_master->cur_pic, 0, 1);
 		set_aux_data(hevc, hevc->cur_pic, 0, 2);
 
 	}
