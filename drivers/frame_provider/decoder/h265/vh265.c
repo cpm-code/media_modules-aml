@@ -31,6 +31,7 @@
 #include <linux/kthread.h>
 #include <linux/platform_device.h>
 #include <linux/amlogic/media/vfm/vframe.h>
+#include <linux/math64.h>
 #include <linux/amlogic/media/utils/amstream.h>
 #include <linux/amlogic/media/utils/vformat.h>
 #include <linux/amlogic/media/frame_sync/ptsserv.h>
@@ -1224,6 +1225,7 @@ struct PIC_s {
 
 	u32 pts;
 	u64 pts64;
+	bool pts_valid;
 	u64 timestamp;
 
 	u32 aspect_ratio_idc;
@@ -3706,6 +3708,193 @@ static void clear_poc_flag(struct hevc_state_s *hevc)
 	}
 }
 
+static void propagate_pts_to_bl(
+	struct hevc_state_s *hevc,
+	struct PIC_s *pic)
+{
+	struct vdec_s *vdec;
+	struct vdec_s *bl_vdec;
+	struct hevc_state_s *bl_hevc;
+	struct PIC_s *bl_pic;
+
+	if (!hevc || !pic) return;
+
+	if (!pic->pts_valid) return;
+
+	if (pic->POC == INVALID_POC) return;
+
+	vdec = hw_to_vdec(hevc);
+	if (!vdec) return;
+
+	// In our case only EL carries the RPU (with special PTS marker)
+	if (!vdec->master) return;
+
+	bl_vdec = vdec->master;
+	bl_hevc = bl_vdec ? (struct hevc_state_s *)bl_vdec->private : NULL;
+	bl_pic = (bl_hevc) ? get_pic_by_POC(bl_hevc, pic->POC) : NULL;
+
+	if (!bl_pic) return;
+
+	// Don't overwrite an already-valid PTS on BL
+	if (bl_pic->pts_valid) return;
+
+	bl_pic->pts64 = pic->pts64;
+	bl_pic->pts = pic->pts;
+	bl_pic->pts_valid = pic->pts_valid;
+}
+
+static int recover_pts_from_aux(
+	struct hevc_state_s *hevc,
+	struct PIC_s *pic)
+{
+	static const char pts_marker[] = "PTS_US64=";
+	static const int marker_len = sizeof(pts_marker) - 1;
+	static const int trailer_len = marker_len + 16 + 1; // marker + 16 hex + ';'
+
+	unsigned int off = 0;
+
+	if (!pic || !pic->aux_data_buf) return 0;
+
+	if (pic->aux_data_size < (unsigned int)(8 + trailer_len)) return 0;
+
+	while (off + 8 <= pic->aux_data_size)
+	{
+		u32 blen = get_unaligned_be32(pic->aux_data_buf + off);
+		u8 tag = pic->aux_data_buf[off + 4];
+		u32 payload_off = off + 8;
+		u32 next_off = payload_off + blen;
+		u8 *p;
+		u64 pts_us64 = 0;
+		int k;
+
+		if (next_off > pic->aux_data_size) break;
+
+		// DV metadata block tag is 0x1.
+		// Our marker is appended near the end of the DV payload,
+		// it will be followed by RBSP trailing bits (0x80) and padding zeros.
+		if (tag != 0x1 || blen < (u32)trailer_len) {
+			off = next_off;
+			continue;
+		}
+
+		{
+			u32 payload_end = blen;
+			u8 *payload = (u8 *)pic->aux_data_buf + payload_off;
+
+			// Trim optional padding zeros and RBSP stop bit (0x80).
+			while (payload_end > 0 && payload[payload_end - 1] == 0x00)
+				payload_end--;
+
+			if (payload_end > 0 && payload[payload_end - 1] == 0x80)
+				payload_end--;
+
+			if (payload_end < (u32)trailer_len) {
+				off = next_off;
+				continue;
+			}
+
+			p = payload + payload_end - trailer_len;
+		}
+
+		if (memcmp(p, pts_marker, marker_len) != 0) {
+			off = next_off;
+			continue;
+		}
+
+		if (p[marker_len + 16] != ';') {
+			off = next_off;
+			continue;
+		}
+
+		for (k = 0; k < 16; k++) {
+			u8 c = p[marker_len + k];
+			u8 v;
+			if      (c >= '0' && c <= '9')  v = c - '0';
+			else if (c >= 'A' && c <= 'F')  v = c - 'A' + 10;
+			else if (c >= 'a' && c <= 'f')  v = c - 'a' + 10;
+			else break;
+			pts_us64 = (pts_us64 << 4) | v;
+		}
+
+		if (k != 16) {
+			off = next_off;
+			continue;
+		}
+
+		pic->pts64 = pts_us64;
+		pic->pts = (u32)div64_u64(pts_us64 * 9, 100);
+		pic->pts_valid = true;
+		propagate_pts_to_bl(hevc, pic);
+
+		hevc_print(hevc, H265_DEBUG_OUT_PTS,
+			"capture stream pts (aux dv-rpu): poc %d pts %u pts_us64 %llu\n",
+			pic->POC, pic->pts, pic->pts64);
+
+		// Strip trailer from this block payload and shrink buffer.
+		{
+			u32 abs_pos = (u32)(p - (u8 *)pic->aux_data_buf);
+			u32 bytes_after = pic->aux_data_size - (abs_pos + trailer_len);
+			if (bytes_after)
+				memmove(pic->aux_data_buf + abs_pos,
+					pic->aux_data_buf + abs_pos + trailer_len,
+					bytes_after);
+			pic->aux_data_size -= trailer_len;
+			blen -= trailer_len;
+			put_unaligned_be32(blen, pic->aux_data_buf + off);
+		}
+
+		return 1;
+	}
+
+	return 0;
+}
+
+// Stream-based mode:
+// 1) Prefer recovered PTS from injected aux data.
+// 2) If dual-layer and this layer lacks aux PTS, reuse the other layer's PTS by POC.
+// 3) Fallback to ptsserv lookup (legacy behavior).
+static void stream_mode_fill_vf_pts(
+	struct hevc_state_s *hevc,
+	struct vdec_s *vdec,
+	struct PIC_s *pic,
+	struct vframe_s *vf,
+	u32 *frame_size)
+{
+	if (!hevc || !vdec || !pic || !vf) return;
+
+	if (pic->pts_valid) {
+		vf->pts = pic->pts;
+		vf->pts_us64 = pic->pts64;
+		return;
+	}
+
+	if (vdec->slave)
+	{
+		// legacy DV/stream lookup path
+		hevc_print(hevc, H265_DEBUG_OUT_PTS,
+			"call pts_lookup_offset_us64(0x%x)\n", hevc->shift_byte_count_lo);
+		if ((vdec->vbuf.no_parser == 0) || (vdec->vbuf.use_ptsserv)) {
+			u32 offset = hevc->shift_byte_count_lo;
+			offset = (offset > 4) ? (offset - 4) : offset;
+
+			if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, offset, &vf->pts, frame_size,
+						  0, &vf->pts_us64) != 0) {
+				vf->pts = 0;
+				vf->pts_us64 = 0;
+				pic->pts_valid = false;
+			} else {
+				pic->pts = vf->pts;
+				pic->pts64 = vf->pts_us64;
+				pic->pts_valid = true;
+			}
+		}
+		return;
+	}
+
+	vf->pts = 0;
+	vf->pts_us64 = 0;
+}
+
 static struct PIC_s *output_pic(struct hevc_state_s *hevc, unsigned char flush_flag)
 {
 
@@ -5557,6 +5746,10 @@ static struct PIC_s *get_new_pic(struct hevc_state_s *hevc, union param_u *rpm_p
 		new_pic->pic_struct = hevc->curr_pic_struct;
 		if (new_pic->aux_data_buf)
 			release_aux_data(hevc, new_pic);
+		new_pic->pts = 0;
+		new_pic->pts64 = 0;
+		new_pic->pts_valid = false;
+		new_pic->timestamp = 0;
 		new_pic->mem_saving_mode =
 			hevc->mem_saving_mode;
 		new_pic->bit_depth_luma =
@@ -5686,6 +5879,10 @@ static struct PIC_s *v4l_get_new_pic(struct hevc_state_s *hevc, union param_u *r
 
 	if (new_pic->aux_data_buf)
 		release_aux_data(hevc, new_pic);
+	new_pic->pts = 0;
+	new_pic->pts64 = 0;
+	new_pic->pts_valid = false;
+	new_pic->timestamp = 0;
 	new_pic->mem_saving_mode =
 		hevc->mem_saving_mode;
 	new_pic->bit_depth_luma =
@@ -5828,7 +6025,7 @@ static void flush_output(struct hevc_state_s *hevc, struct PIC_s *pic)
 */
 static void set_aux_data(struct hevc_state_s *hevc, struct PIC_s *pic, unsigned char suffix_flag, unsigned char dv_meta_flag)
 {
-
+	struct vdec_s *vdec = hw_to_vdec(hevc);
 	int i;
 	unsigned short *aux_adr;
 	unsigned int size_reg_val = READ_VREG(HEVC_AUX_DATA_SIZE);
@@ -5955,6 +6152,9 @@ static void set_aux_data(struct hevc_state_s *hevc, struct PIC_s *pic, unsigned 
 				}
 				hevc_print_cont(hevc, 0, "\n");
 			}
+
+			if (vdec_stream_based(vdec))
+				recover_pts_from_aux(hevc, pic);
 
 		} else {
 			hevc_print(hevc, 0, "new buf alloc failed\n");
@@ -8560,25 +8760,9 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 			vf->pts_us64 = pic->pts64;
 			vf->timestamp = pic->timestamp;
 		}
-		else if (vdec->slave) // DV Slave (i.e. BL) - use streaming
+		else
 		{
-			// use the hevc shift byte count, different at this point to the passed in pic stream (more accurate)
-			hevc_print(hevc, H265_DEBUG_OUT_PTS, "call pts_lookup_offset_us64(0x%x)\n", hevc->shift_byte_count_lo);
-			if ((vdec->vbuf.no_parser == 0) || (vdec->vbuf.use_ptsserv))
-			{
-				u32 offset = hevc->shift_byte_count_lo;
-				offset = (offset > 4) ? (offset - 4) : offset;
-
-				if (pts_lookup_offset_us64(PTS_TYPE_VIDEO, offset, &vf->pts, &frame_size, 0, &vf->pts_us64) != 0)
-				{
-					vf->pts = 0;
-					vf->pts_us64 = 0;
-				}
-				// pr_info("[cpm-code] check-out shift [%u] pts [%llu]\n", offset, vf->pts_us64);
-			}
-		} else {
-			vf->pts = 0;
-			vf->pts_us64 = 0;
+			stream_mode_fill_vf_pts(hevc, vdec, pic, vf, &frame_size);
 		}
 
 		if (pts_unstable && (hevc->frame_dur > 0))
@@ -8586,7 +8770,7 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 
 		fill_frame_info(hevc, pic, frame_size, vf->pts);
 
-		if (vf->pts != 0)
+		if (pic->pts_valid)
 			hevc->last_lookup_pts = vf->pts;
 
 		if ((hevc->pts_mode == PTS_NONE_REF_USE_DURATION) && (slice_type != I_SLICE))
@@ -8594,7 +8778,7 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 
 		hevc->last_pts = vf->pts;
 
-		if (vf->pts_us64 != 0)
+		if (pic->pts_valid)
 			hevc->last_lookup_pts_us64 = vf->pts_us64;
 
 		if ((hevc->pts_mode == PTS_NONE_REF_USE_DURATION) && (slice_type != I_SLICE))
@@ -9103,6 +9287,7 @@ static int post_picture_early(struct vdec_s *vdec, int index)
 	pic->stream_offset	= READ_VREG(HEVC_SHIFT_BYTE_COUNT);
 
 	if (hevc->chunk) {
+		pic->pts_valid = hevc->chunk->pts_valid;
 		pic->pts	= hevc->chunk->pts;
 		pic->pts64	= hevc->chunk->pts64;
 		pic->timestamp	= hevc->chunk->timestamp;
@@ -9823,6 +10008,7 @@ static irqreturn_t vh265_isr_thread_fn(int irq, void *data)
 	     dec_status == HEVC_FIND_NEXT_DVEL_NAL) &&
 		  (hevc->chunk))
 	{
+		hevc->cur_pic->pts_valid = hevc->chunk->pts_valid;
 		hevc->cur_pic->pts = hevc->chunk->pts;
 		hevc->cur_pic->pts64 = hevc->chunk->pts64;
 		hevc->cur_pic->timestamp = hevc->chunk->timestamp;
