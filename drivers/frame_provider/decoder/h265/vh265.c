@@ -5105,7 +5105,6 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	WRITE_VREG(HEVC_MPRED_MV_WR_ROW_JUMP, data32);
 	WRITE_VREG(HEVC_MPRED_MV_RD_ROW_JUMP, data32);
 
-	data32 = READ_VREG(HEVC_MPRED_CTRL0);
 	data32 = ((hevc->slice_type & 3) |
 			  (hevc->new_pic & 1) << 2 |
 			  (hevc->new_tile & 1) << 3 |
@@ -5126,7 +5125,6 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	data32 &=  ~(1<< 28);
 	WRITE_VREG(HEVC_MPRED_CTRL0, data32);
 
-	data32 = READ_VREG(HEVC_MPRED_CTRL1);
 	data32 = (
 #if 0
 			/* no set in m8baby test1902 */
