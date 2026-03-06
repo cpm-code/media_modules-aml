@@ -230,15 +230,19 @@ static int esparser_stbuf_write(struct stream_buf_s *stbuf, const u8 *buf, u32 c
 		ret = wait_event_interruptible_timeout(wq, search_done != 0,
 			HZ / 5);
 		if (ret == 0) {
+			u32 current_wp;
+
 			WRITE_PARSER_REG(PARSER_FETCH_CMD, 0);
 
-			if (wp == buf_wp(type)) {
+			current_wp = buf_wp(type);
+
+			if (wp == current_wp) {
 				/*no data fetched */
 				return -EAGAIN;
 			} else {
 				pr_info("W Timeout, but fetch ok,");
 				pr_info("type %d len=%d,wpdiff=%d, isphy %x\n",
-				 type, len, wp - buf_wp(type), stbuf->is_phybuf);
+				 type, len, wp - current_wp, stbuf->is_phybuf);
 			}
 		} else if (ret < 0)
 			return -ERESTARTSYS;
