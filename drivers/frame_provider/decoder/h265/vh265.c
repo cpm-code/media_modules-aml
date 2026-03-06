@@ -4093,22 +4093,35 @@ static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 }
 
 #ifdef SUPPORT_LONG_TERM_RPS
-static unsigned char is_ref_long_term(struct hevc_state_s *hevc, int poc)
+static u32 build_longterm_ref_mask(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 {
-	int ii;
+	int pic_idx;
+	int ref_idx;
+	int slice_idx = cur_pic->slice_idx;
+	u32 mask = 0;
 	struct PIC_s *pic;
 
-	for (ii = 0; ii < MAX_REF_PIC_NUM; ii++)
+	for (pic_idx = 0; pic_idx < MAX_REF_PIC_NUM; pic_idx++)
 	{
-		pic = hevc->m_PIC[ii];
+		pic = hevc->m_PIC[pic_idx];
 
 		if (pic == NULL || pic->index == -1 || pic->BUF_index == -1)
 			continue;
 
-		if (pic->referenced && pic->POC == poc && pic->long_term_ref)
-			return 1;
+		if (!pic->referenced || !pic->long_term_ref)
+			continue;
+
+		for (ref_idx = 0; ref_idx < hevc->RefNum_L0; ref_idx++) {
+			if (cur_pic->m_aiRefPOCList0[slice_idx][ref_idx] == pic->POC)
+				mask |= (1U << ref_idx);
+		}
+		for (ref_idx = 0; ref_idx < hevc->RefNum_L1; ref_idx++) {
+			if (cur_pic->m_aiRefPOCList1[slice_idx][ref_idx] == pic->POC)
+				mask |= (1U << (ref_idx + 16));
+		}
 	}
-	return 0;
+
+	return mask;
 }
 #endif
 
@@ -5145,19 +5158,7 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	WRITE_VREG(HEVC_MPRED_REF_NUM, data32);
 
 #ifdef SUPPORT_LONG_TERM_RPS
-	data32 = 0;
-	for (i = 0; i < hevc->RefNum_L0; i++) {
-		if (is_ref_long_term(hevc,
-			cur_pic->m_aiRefPOCList0
-				[cur_pic->slice_idx][i]))
-			data32 = data32 | (1 << i);
-	}
-	for (i = 0; i < hevc->RefNum_L1; i++) {
-		if (is_ref_long_term(hevc,
-			cur_pic->m_aiRefPOCList1
-				[cur_pic->slice_idx][i]))
-			data32 = data32 | (1 << (i + 16));
-	}
+	data32 = build_longterm_ref_mask(hevc, cur_pic);
 	if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR) {
 		hevc_print(hevc, 0,
 			"LongTerm_Ref 0x%x\n", data32);
