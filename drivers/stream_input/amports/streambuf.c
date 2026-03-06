@@ -216,7 +216,9 @@ u32 stbuf_level(struct stream_buf_s *buf)
 				level += buf->buf_size;
 			return level;
 		} else {
-			if (READ_PARSER_REG(PARSER_ES_CONTROL) & 1) {
+			u32 es_control = READ_PARSER_REG(PARSER_ES_CONTROL);
+
+			if (es_control & 1) {
 				int level = READ_PARSER_REG(PARSER_VIDEO_WP) -
 					READ_PARSER_REG(PARSER_VIDEO_RP);
 				if (level < 0)
@@ -239,7 +241,9 @@ u32 stbuf_rp(struct stream_buf_s *buf)
 		if (buf->no_parser)
 			return buf->buf_rp;
 		else {
-			if (READ_PARSER_REG(PARSER_ES_CONTROL) & 1)
+			u32 es_control = READ_PARSER_REG(PARSER_ES_CONTROL);
+
+			if (es_control & 1)
 				return READ_PARSER_REG(PARSER_VIDEO_RP);
 			else
 				return (buf->type == BUF_TYPE_HEVC) ?
