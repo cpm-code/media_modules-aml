@@ -3594,8 +3594,8 @@ static void init_pic_list_hw(struct hevc_state_s *hevc)
 	int i;
 	int cur_pic_num = MAX_REF_PIC_NUM;
 	int dw_mode = get_double_write_mode(hevc);
-	int is_gxl_capable = (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_GXL);
-	if (is_gxl_capable)
+	int cpu_is_gxl_or_newer = (get_cpu_major_id() >= AM_MESON_CPU_MAJOR_ID_GXL);
+	if (cpu_is_gxl_or_newer)
 		WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR, (0x1 << 1) | (0x1 << 2));
 	else
 		WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR, 0x0);
@@ -3609,7 +3609,7 @@ static void init_pic_list_hw(struct hevc_state_s *hevc)
 			break;
 		}
 
-		if (is_gxl_capable)
+		if (cpu_is_gxl_or_newer)
 		{
 			if (hevc->mmu_enable && ((dw_mode & 0x10) == 0))
 				WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_DATA, hevc->m_PIC[i]->header_adr>>5);
@@ -3619,7 +3619,7 @@ static void init_pic_list_hw(struct hevc_state_s *hevc)
 			WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR, hevc->m_PIC[i]->mc_y_adr | (hevc->m_PIC[i]->mc_canvas_y << 8) | 0x1);
 
 		if (dw_mode & 0x10) {
-			if (is_gxl_capable)
+			if (cpu_is_gxl_or_newer)
 					WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_DATA, hevc->m_PIC[i]->mc_u_v_adr >> 5);
 			else
 				WRITE_VREG(HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR, hevc->m_PIC[i]->mc_u_v_adr | (hevc->m_PIC[i]->mc_canvas_u_v << 8) | 0x1);
