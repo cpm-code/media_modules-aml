@@ -4489,29 +4489,30 @@ static void update_tile_info(struct hevc_state_s *hevc, int pic_width_cu,
 				start_cu_x = 0;
 				for (j = 0; j < hevc->num_tile_col; j++)
 				{
+					struct tile_s *t = &hevc->m_tile[i][j];
 					if (j == (hevc->num_tile_col - 1))
-						hevc->m_tile[i][j].width = pic_width_cu - start_cu_x;
+						t->width = pic_width_cu - start_cu_x;
 					else
-						hevc->m_tile[i][j].width = w;
+						t->width = w;
 
 					if (i == (hevc->num_tile_row - 1))
-						hevc->m_tile[i][j].height = pic_height_cu - start_cu_y;
+						t->height = pic_height_cu - start_cu_y;
 					else
-						hevc->m_tile[i][j].height = h;
+						t->height = h;
 
-					hevc->m_tile[i][j].start_cu_x = start_cu_x;
-					hevc->m_tile[i][j].start_cu_y = start_cu_y;
-					hevc->m_tile[i][j].sao_vb_start_addr = hevc->work_space_buf->sao_vb.buf_start + j * sao_vb_size;
-					hevc->m_tile[i][j].sao_abv_start_addr = hevc->work_space_buf->sao_abv.buf_start + i * sao_abv_size;
+					t->start_cu_x = start_cu_x;
+					t->start_cu_y = start_cu_y;
+					t->sao_vb_start_addr = hevc->work_space_buf->sao_vb.buf_start + j * sao_vb_size;
+					t->sao_abv_start_addr = hevc->work_space_buf->sao_abv.buf_start + i * sao_abv_size;
 
 					if (dbg_flag & H265_DEBUG_BUFMGR)
 					{
-						hevc_print_cont(hevc, 0, "{y=%d, x=%d w %d h %d ", i, j, hevc->m_tile[i][j].width, hevc->m_tile[i][j].height);
-						hevc_print_cont(hevc, 0, "start_x %d start_y %d ", hevc->m_tile[i][j].start_cu_x, hevc->m_tile[i][j].start_cu_y);
-						hevc_print_cont(hevc, 0, "sao_vb_start 0x%x ", hevc->m_tile[i][j]. sao_vb_start_addr);
-						hevc_print_cont(hevc, 0, "sao_abv_start 0x%x}\n", hevc->m_tile[i][j]. sao_abv_start_addr);
+						hevc_print_cont(hevc, 0, "{y=%d, x=%d w %d h %d ", i, j, t->width, t->height);
+						hevc_print_cont(hevc, 0, "start_x %d start_y %d ", t->start_cu_x, t->start_cu_y);
+						hevc_print_cont(hevc, 0, "sao_vb_start 0x%x ", t->sao_vb_start_addr);
+						hevc_print_cont(hevc, 0, "sao_abv_start 0x%x}\n", t->sao_abv_start_addr);
 					}
-					start_cu_x += hevc->m_tile[i][j].width;
+					start_cu_x += t->width;
 
 				}
 				start_cu_y += hevc->m_tile[i][0].height;
@@ -4525,29 +4526,30 @@ static void update_tile_info(struct hevc_state_s *hevc, int pic_width_cu,
 				start_cu_x = 0;
 				for (j = 0; j < hevc->num_tile_col; j++)
 				{
+					struct tile_s *t = &hevc->m_tile[i][j];
 					if (j == (hevc->num_tile_col - 1))
-						hevc->m_tile[i][j].width = pic_width_cu - start_cu_x;
+						t->width = pic_width_cu - start_cu_x;
 					else
-						hevc->m_tile[i][j].width = params->p.tile_width[j];
+						t->width = params->p.tile_width[j];
 
 					if (i == (hevc->num_tile_row - 1))
-						hevc->m_tile[i][j].height = pic_height_cu - start_cu_y;
+						t->height = pic_height_cu - start_cu_y;
 					else
-						hevc->m_tile[i][j].height = params->p.tile_height[i];
+						t->height = params->p.tile_height[i];
 
-					hevc->m_tile[i][j].start_cu_x = start_cu_x;
-					hevc->m_tile[i][j].start_cu_y = start_cu_y;
-					hevc->m_tile[i][j].sao_vb_start_addr = hevc->work_space_buf->sao_vb.buf_start + j * sao_vb_size;
-					hevc->m_tile[i][j].sao_abv_start_addr = hevc->work_space_buf->sao_abv.buf_start + i * sao_abv_size;
+					t->start_cu_x = start_cu_x;
+					t->start_cu_y = start_cu_y;
+					t->sao_vb_start_addr = hevc->work_space_buf->sao_vb.buf_start + j * sao_vb_size;
+					t->sao_abv_start_addr = hevc->work_space_buf->sao_abv.buf_start + i * sao_abv_size;
 
 					if (dbg_flag & H265_DEBUG_BUFMGR)
 					{
-						hevc_print_cont(hevc, 0, "{y=%d, x=%d w %d h %d ", i, j, hevc->m_tile[i][j].width, hevc->m_tile[i][j].height);
-						hevc_print_cont(hevc, 0, "start_x %d start_y %d ", hevc->m_tile[i][j].start_cu_x, hevc->m_tile[i][j].start_cu_y);
-						hevc_print_cont(hevc, 0, "sao_vb_start 0x%x ", hevc->m_tile[i][j]. sao_vb_start_addr);
-						hevc_print_cont(hevc, 0, "sao_abv_start 0x%x}\n", hevc->m_tile[i][j]. sao_abv_start_addr);
+						hevc_print_cont(hevc, 0, "{y=%d, x=%d w %d h %d ", i, j, t->width, t->height);
+						hevc_print_cont(hevc, 0, "start_x %d start_y %d ", t->start_cu_x, t->start_cu_y);
+						hevc_print_cont(hevc, 0, "sao_vb_start 0x%x ", t->sao_vb_start_addr);
+						hevc_print_cont(hevc, 0, "sao_abv_start 0x%x}\n", t->sao_abv_start_addr);
 					}
-					start_cu_x += hevc->m_tile[i][j].width;
+					start_cu_x += t->width;
 				}
 				start_cu_y += hevc->m_tile[i][0].height;
 			}
