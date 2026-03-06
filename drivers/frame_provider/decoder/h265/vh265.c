@@ -2620,17 +2620,19 @@ static struct PIC_s *get_ref_pic_by_POC(struct hevc_state_s *hevc, int POC)
 	int i;
 	struct PIC_s *pic;
 	struct PIC_s *ret_pic = NULL;
+	int pic_w = hevc->pic_w;
+	int pic_h = hevc->pic_h;
 
 	for (i = 0; i < MAX_REF_PIC_NUM; i++) {
 		pic = hevc->m_PIC[i];
-		if (pic == NULL || pic->index == -1 || pic->BUF_index == -1)
+		if (!pic || pic->index == -1 || pic->BUF_index == -1 || !pic->referenced)
 			continue;
 
 		// Add width and height of ref picture detection, resolved incorrectly referenced frame.
-		if ((pic->POC == POC) && (pic->referenced) && (hevc->pic_w == pic->width) && (hevc->pic_h == pic->height))
-		{
-			if (ret_pic == NULL) ret_pic = pic;
-			else if (pic->decode_idx > ret_pic->decode_idx) ret_pic = pic;
+		if ((pic->POC == POC) && (pic_w == pic->width) && (pic_h == pic->height)) {
+			if (ret_pic == NULL || pic->decode_idx > ret_pic->decode_idx) {
+				ret_pic = pic;
+			}
 		}
 	}
 
@@ -4014,44 +4016,55 @@ static struct PIC_s *output_pic(struct hevc_state_s *hevc, unsigned char flush_f
 
 static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 {
-	int i;
+	int i, j;
 	int dbg_flag = get_dbg_flag(hevc);
 	struct PIC_s *pic;
+	struct PIC_s *valid_pics[MAX_REF_PIC_NUM];
+	int num_valid_pics = 0;
+	int pic_w = hevc->pic_w;
+	int pic_h = hevc->pic_h;
 
 	if (dbg_flag & H265_DEBUG_BUFMGR)
 		hevc_print(hevc, 0, "config_mc_buffer entered .....\n");
 
-	if (cur_pic->slice_type != I_SLICE) /* P and B pic */
-	{
-		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (0 << 1) | 1);
+	if (cur_pic->slice_type != I_SLICE) {
+		for (i = 0; i < MAX_REF_PIC_NUM; i++) {
+			pic = hevc->m_PIC[i];
+			if (pic && pic->index != -1 && pic->BUF_index != -1 && pic->referenced &&
+				pic_w == pic->width && pic_h == pic->height) {
+				valid_pics[num_valid_pics++] = pic;
+			}
+		}
 
+		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (0 << 1) | 1);
 		for (i = 0; i < cur_pic->RefNum_L0; i++)
 		{
-			pic = get_ref_pic_by_POC(hevc, cur_pic->m_aiRefPOCList0[cur_pic->slice_idx][i]);
+			int poc_target = cur_pic->m_aiRefPOCList0[cur_pic->slice_idx][i];
+			pic = NULL;
+			for (j = 0; j < num_valid_pics; j++) {
+				if (valid_pics[j]->POC == poc_target) {
+					if (!pic || valid_pics[j]->decode_idx > pic->decode_idx)
+						pic = valid_pics[j];
+				}
+			}
+
 			if (pic)
 			{
-				if ((pic->width != hevc->pic_w) || (pic->height != hevc->pic_h))
-				{
-					hevc_print(hevc, 0, "%s: Wrong reference pic (poc %d) width/height %d/%d\n",
-						__func__, pic->POC, pic->width, pic->height);
-					cur_pic->error_mark = 1;
-				}
-
 				if (pic->error_mark && (ref_frame_mark_flag[hevc->index]))
 					cur_pic->error_mark = 1;
 
 				WRITE_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR, (pic->mc_canvas_u_v << 16) | (pic->mc_canvas_u_v << 8) | pic->mc_canvas_y);
-
 				if (dbg_flag & H265_DEBUG_BUFMGR) {
 					hevc_print_cont(hevc, 0, "refid %x mc_canvas_u_v %x", i, pic->mc_canvas_u_v);
 					hevc_print_cont(hevc, 0, " mc_canvas_y %x\n", pic->mc_canvas_y);
 				}
-			} else
+			} else {
 				cur_pic->error_mark = 1;
+			}
 
 			if (pic == NULL || pic->error_mark)
 				hevc_print(hevc, 0, "Error %s, %dth poc (%d) %s\n", __func__, i,
-				 	cur_pic->m_aiRefPOCList0[cur_pic-> slice_idx][i], pic ? "has error" : "not in list0");
+					cur_pic->m_aiRefPOCList0[cur_pic->slice_idx][i], pic ? "has error" : "not in list0");
 		}
 	}
 
@@ -4061,35 +4074,36 @@ static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 			hevc_print(hevc, 0, "config_mc_buffer RefNum_L1\n");
 
 		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (16 << 8) | (0 << 1) | 1);
-
 		for (i = 0; i < cur_pic->RefNum_L1; i++) {
-			pic = get_ref_pic_by_POC(hevc, cur_pic->m_aiRefPOCList1[cur_pic->slice_idx][i]);
+			int poc_target = cur_pic->m_aiRefPOCList1[cur_pic->slice_idx][i];
+			pic = NULL;
+			for (j = 0; j < num_valid_pics; j++) {
+				if (valid_pics[j]->POC == poc_target) {
+					if (!pic || valid_pics[j]->decode_idx > pic->decode_idx)
+						pic = valid_pics[j];
+				}
+			}
+
 			if (pic)
 			{
-				if ((pic->width != hevc->pic_w) || (pic->height != hevc->pic_h))
-				{
-					hevc_print(hevc, 0, "%s: Wrong reference pic (poc %d) width/height %d/%d\n",
-						__func__, pic->POC, pic->width, pic->height);
-					cur_pic->error_mark = 1;
-				}
-
 				if (pic->error_mark && (ref_frame_mark_flag[hevc->index]))
 					cur_pic->error_mark = 1;
 
 				WRITE_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR, (pic->mc_canvas_u_v << 16) | (pic->mc_canvas_u_v << 8) | pic->mc_canvas_y);
-
 				if (dbg_flag & H265_DEBUG_BUFMGR) {
 					hevc_print_cont(hevc, 0, "refid %x mc_canvas_u_v %x", i, pic->mc_canvas_u_v);
 					hevc_print_cont(hevc, 0, " mc_canvas_y %x\n", pic->mc_canvas_y);
 				}
-			} else
+			} else {
 				cur_pic->error_mark = 1;
+			}
 
 			if (pic == NULL || pic->error_mark)
 				hevc_print(hevc, 0, "Error %s, %dth poc (%d) %s\n", __func__, i,
-					cur_pic->m_aiRefPOCList1[cur_pic-> slice_idx][i], pic ? "has error" : "not in list1");
+					cur_pic->m_aiRefPOCList1[cur_pic->slice_idx][i], pic ? "has error" : "not in list1");
 		}
 	}
+
 	return 0;
 }
 
