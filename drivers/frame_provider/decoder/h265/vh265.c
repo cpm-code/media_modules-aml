@@ -11769,10 +11769,10 @@ static int vh265_stop(struct hevc_state_s *hevc)
 	{
 		int wait_timeout_count = 0;
 
-		while (READ_VREG(HEVC_DEC_STATUS_REG) == HEVC_CODED_SLICE_SEGMENT_DAT && wait_timeout_count < 10)
+		while (READ_VREG(HEVC_DEC_STATUS_REG) == HEVC_CODED_SLICE_SEGMENT_DAT && wait_timeout_count < 200)
 		{
 			wait_timeout_count++;
-			msleep(20);
+			usleep_range(1000, 2000);
 		}
 	}
 
