@@ -6432,10 +6432,16 @@ static void check_pic_decoded_error(struct hevc_state_s *hevc, int decoded_lcu)
 	}
 }
 
+static u32 hevc_debug_qos_enabled;
+module_param(hevc_debug_qos_enabled, uint, 0664);
+
 /* only when we decoded one field or one frame we can call this function to get qos info */
 static void get_picture_qos_info(struct hevc_state_s *hevc)
 {
 	struct PIC_s *picture = hevc->cur_pic;
+
+	if (!hevc_debug_qos_enabled)
+		return;
 
 	if (!hevc->cur_pic)
 		return;
