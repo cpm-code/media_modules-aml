@@ -4808,11 +4808,8 @@ static void hevc_init_decoder_hw(struct hevc_state_s *hevc, int decode_pic_begin
 	/* Initial IQIT_SCALELUT memory -- just to avoid X in simulation */
 	if (is_rdma_enable())
 		rdma_back_end_work(hevc->rdma_phy_adr, RDMA_SIZE);
-	else {
-		WRITE_VREG(HEVC_IQIT_SCALELUT_WR_ADDR, 0);/*cfg_p_addr*/
-		for (i = 0; i < 1024; i++)
-			WRITE_VREG(HEVC_IQIT_SCALELUT_DATA, 0);
-	}
+	else
+		; /* Removed unbatched IQIT_SCALELUT initialization to avoid bus freeze */
 
 	WRITE_VREG(HEVC_DECODE_SIZE, 0);
 	/* Send parser_cmd */
@@ -4921,11 +4918,7 @@ static void decoder_hw_reset(void)
 	/* hevc_parser_core_clk_en */
 	WRITE_VREG(HEVC_PARSER_CORE_CONTROL, (1 << 0));
 
-	/* Initial IQIT_SCALELUT memory -- just to avoid X in simulation */
-	WRITE_VREG(HEVC_IQIT_SCALELUT_WR_ADDR, 0);	/* cfg_p_addr */
-
-	for (i = 0; i < 1024; i++)
-		WRITE_VREG(HEVC_IQIT_SCALELUT_DATA, 0);
+	/* Initial IQIT_SCALELUT memory -- Removed unbatched initialization to avoid bus freeze */
 
 	/* Send parser_cmd */
 	WRITE_VREG(HEVC_PARSER_CMD_WRITE, (1 << 16) | (0 << 0));
