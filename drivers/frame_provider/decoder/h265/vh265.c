@@ -5111,7 +5111,6 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	data32 &=  ~(1<< 28);
 	WRITE_VREG(HEVC_MPRED_CTRL0, data32);
 
-	data32 = READ_VREG(HEVC_MPRED_CTRL1);
 	data32 = (
 #if 0
 			/* no set in m8baby test1902 */
