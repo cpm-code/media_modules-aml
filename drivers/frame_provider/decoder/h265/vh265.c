@@ -3959,14 +3959,6 @@ static struct PIC_s *output_pic(struct hevc_state_s *hevc, unsigned char flush_f
 				first_pic_flag = 1;
 				hevc_print(hevc, 0, "VH265: output first frame\n");
 			}
-		}
-
-		for (i = 0; i < MAX_REF_PIC_NUM; i++)
-		{
-			pic = hevc->m_PIC[i];
-
-			if (pic == NULL || (pic->index == -1) || (pic->BUF_index == -1) || (pic->POC == INVALID_POC))
-				continue;
 
 			if (pic->output_mark)
 			{
