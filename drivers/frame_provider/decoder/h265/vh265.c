@@ -7207,9 +7207,20 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 
 	if (hevc->slice_type != I_SLICE)
 	{
+		hevc->col_pic = NULL;
 		if (hevc->Col_POC != INVALID_POC)
 		{
-			hevc->col_pic = get_ref_pic_by_POC(hevc, hevc->Col_POC);
+			if (hevc->list_no == 0) {
+				if (Col_ref < hevc->cur_pic->RefNum_L0)
+					hevc->col_pic = hevc->cur_pic->ref_pic_l0[Col_ref];
+			} else {
+				if (Col_ref < hevc->cur_pic->RefNum_L1)
+					hevc->col_pic = hevc->cur_pic->ref_pic_l1[Col_ref];
+			}
+
+			if (hevc->col_pic == NULL)
+				hevc->col_pic = get_ref_pic_by_POC(hevc, hevc->Col_POC);
+
 			if (hevc->col_pic == NULL)
 			{
 				hevc->cur_pic->error_mark = 1;
