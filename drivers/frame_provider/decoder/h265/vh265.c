@@ -1185,6 +1185,8 @@ struct PIC_s {
 	int slice_idx;
 	int m_aiRefPOCList0[MAX_SLICE_NUM][16];
 	int m_aiRefPOCList1[MAX_SLICE_NUM][16];
+	struct PIC_s *ref_pic_l0[16];
+	struct PIC_s *ref_pic_l1[16];
 
 #ifdef SUPPORT_LONG_TERM_RPS
 	unsigned char long_term_ref;
@@ -4016,37 +4018,18 @@ static struct PIC_s *output_pic(struct hevc_state_s *hevc, unsigned char flush_f
 
 static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 {
-	int i, j;
+	int i;
 	int dbg_flag = get_dbg_flag(hevc);
 	struct PIC_s *pic;
-	struct PIC_s *valid_pics[MAX_REF_PIC_NUM];
-	int num_valid_pics = 0;
-	int pic_w = hevc->pic_w;
-	int pic_h = hevc->pic_h;
 
 	if (dbg_flag & H265_DEBUG_BUFMGR)
 		hevc_print(hevc, 0, "config_mc_buffer entered .....\n");
 
 	if (cur_pic->slice_type != I_SLICE) {
-		for (i = 0; i < MAX_REF_PIC_NUM; i++) {
-			pic = hevc->m_PIC[i];
-			if (pic && pic->index != -1 && pic->BUF_index != -1 && pic->referenced &&
-				pic_w == pic->width && pic_h == pic->height) {
-				valid_pics[num_valid_pics++] = pic;
-			}
-		}
-
 		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (0 << 1) | 1);
 		for (i = 0; i < cur_pic->RefNum_L0; i++)
 		{
-			int poc_target = cur_pic->m_aiRefPOCList0[cur_pic->slice_idx][i];
-			pic = NULL;
-			for (j = 0; j < num_valid_pics; j++) {
-				if (valid_pics[j]->POC == poc_target) {
-					if (!pic || valid_pics[j]->decode_idx > pic->decode_idx)
-						pic = valid_pics[j];
-				}
-			}
+			pic = cur_pic->ref_pic_l0[i];
 
 			if (pic)
 			{
@@ -4075,14 +4058,7 @@ static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 
 		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (16 << 8) | (0 << 1) | 1);
 		for (i = 0; i < cur_pic->RefNum_L1; i++) {
-			int poc_target = cur_pic->m_aiRefPOCList1[cur_pic->slice_idx][i];
-			pic = NULL;
-			for (j = 0; j < num_valid_pics; j++) {
-				if (valid_pics[j]->POC == poc_target) {
-					if (!pic || valid_pics[j]->decode_idx > pic->decode_idx)
-						pic = valid_pics[j];
-				}
-			}
+			pic = cur_pic->ref_pic_l1[i];
 
 			if (pic)
 			{
@@ -4110,30 +4086,22 @@ static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 #ifdef SUPPORT_LONG_TERM_RPS
 static u32 build_longterm_ref_mask(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 {
-	int pic_idx;
 	int ref_idx;
-	int slice_idx = cur_pic->slice_idx;
 	u32 mask = 0;
 	struct PIC_s *pic;
 
-	for (pic_idx = 0; pic_idx < MAX_REF_PIC_NUM; pic_idx++)
-	{
-		pic = hevc->m_PIC[pic_idx];
+	(void)hevc;
 
-		if (pic == NULL || pic->index == -1 || pic->BUF_index == -1)
-			continue;
+	for (ref_idx = 0; ref_idx < cur_pic->RefNum_L0; ref_idx++) {
+		pic = cur_pic->ref_pic_l0[ref_idx];
+		if (pic && pic->long_term_ref)
+			mask |= (1U << ref_idx);
+	}
 
-		if (!pic->referenced || !pic->long_term_ref)
-			continue;
-
-		for (ref_idx = 0; ref_idx < hevc->RefNum_L0; ref_idx++) {
-			if (cur_pic->m_aiRefPOCList0[slice_idx][ref_idx] == pic->POC)
-				mask |= (1U << ref_idx);
-		}
-		for (ref_idx = 0; ref_idx < hevc->RefNum_L1; ref_idx++) {
-			if (cur_pic->m_aiRefPOCList1[slice_idx][ref_idx] == pic->POC)
-				mask |= (1U << (ref_idx + 16));
-		}
+	for (ref_idx = 0; ref_idx < cur_pic->RefNum_L1; ref_idx++) {
+		pic = cur_pic->ref_pic_l1[ref_idx];
+		if (pic && pic->long_term_ref)
+			mask |= (1U << (ref_idx + 16));
 	}
 
 	return mask;
@@ -4202,6 +4170,57 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 			put_mv_buf(hevc, pic);
 			if (pic_list_debug & 0x2)
 				pr_err("set poc %d reference to 0\n", pic->POC);
+		}
+	}
+}
+
+static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
+{
+	int i, j;
+	int slice_idx = cur_pic->slice_idx;
+	int pic_w = hevc->pic_w;
+	int pic_h = hevc->pic_h;
+	struct PIC_s *pic;
+	struct PIC_s *valid_pics[MAX_REF_PIC_NUM];
+	int num_valid_pics = 0;
+
+	for (i = 0; i < MAX_REF_ACTIVE; i++) {
+		cur_pic->ref_pic_l0[i] = NULL;
+		cur_pic->ref_pic_l1[i] = NULL;
+	}
+
+	for (i = 0; i < MAX_REF_PIC_NUM; i++) {
+		pic = hevc->m_PIC[i];
+		if (!pic || pic->index == -1 || pic->BUF_index == -1 || !pic->referenced)
+			continue;
+
+		if (pic_w == pic->width && pic_h == pic->height)
+			valid_pics[num_valid_pics++] = pic;
+	}
+
+	for (i = 0; i < cur_pic->RefNum_L0; i++) {
+		int poc_target = cur_pic->m_aiRefPOCList0[slice_idx][i];
+
+		for (j = 0; j < num_valid_pics; j++) {
+			pic = valid_pics[j];
+			if (pic->POC == poc_target) {
+				if (!cur_pic->ref_pic_l0[i] ||
+				    pic->decode_idx > cur_pic->ref_pic_l0[i]->decode_idx)
+					cur_pic->ref_pic_l0[i] = pic;
+			}
+		}
+	}
+
+	for (i = 0; i < cur_pic->RefNum_L1; i++) {
+		int poc_target = cur_pic->m_aiRefPOCList1[slice_idx][i];
+
+		for (j = 0; j < num_valid_pics; j++) {
+			pic = valid_pics[j];
+			if (pic->POC == poc_target) {
+				if (!cur_pic->ref_pic_l1[i] ||
+				    pic->decode_idx > cur_pic->ref_pic_l1[i]->decode_idx)
+					cur_pic->ref_pic_l1[i] = pic;
+			}
 		}
 	}
 }
@@ -4438,6 +4457,7 @@ static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
 	                  (params->p.slice_type == B_SLICE) ? B_SLICE : 3;
 	pic->RefNum_L0 = num_ref_idx_l0_active;
 	pic->RefNum_L1 = num_ref_idx_l1_active;
+	resolve_ref_pic_list(hevc, pic);
 }
 
 static void update_tile_info(struct hevc_state_s *hevc, int pic_width_cu,
