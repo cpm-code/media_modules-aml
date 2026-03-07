@@ -11946,38 +11946,30 @@ static void timeout_process(struct hevc_state_s *hevc)
 }
 
 #ifdef CONSTRAIN_MAX_BUF_NUM
-static int get_vf_ref_only_buf_count(struct hevc_state_s *hevc)
+static void get_constrained_buf_counts(struct hevc_state_s *hevc,
+	int *vf_ref_only_count, int *used_count)
 {
 	struct PIC_s *pic;
 	int i;
-	int count = 0;
+	int vf_only = 0;
+	int used = 0;
+
 	for (i = 0; i < MAX_REF_PIC_NUM; i++)
 	{
 		pic = hevc->m_PIC[i];
 		if (pic == NULL || pic->index == -1) continue;
 
 		if (pic->output_mark == 0 && pic->referenced == 0 && pic->output_ready == 1)
-			count++;
-	}
-
-	return count;
-}
-
-static int get_used_buf_count(struct hevc_state_s *hevc)
-{
-	struct PIC_s *pic;
-	int i;
-	int count = 0;
-	for (i = 0; i < MAX_REF_PIC_NUM; i++)
-	{
-		pic = hevc->m_PIC[i];
-		if (pic == NULL || pic->index == -1) continue;
+			vf_only++;
 
 		if (pic->output_mark != 0 || pic->referenced != 0 || pic->output_ready != 0)
-			count++;
+			used++;
 	}
 
-	return count;
+	if (vf_ref_only_count)
+		*vf_ref_only_count = vf_only;
+	if (used_count)
+		*used_count = used;
 }
 #endif
 
@@ -12815,19 +12807,24 @@ static unsigned long run_ready(struct vdec_s *vdec, unsigned long mask)
 #ifdef CONSTRAIN_MAX_BUF_NUM
 	if (hevc->pic_list_init_flag == 3)
 	{
-		if (run_ready_max_vf_only_num > 0 && get_vf_ref_only_buf_count(hevc) >= run_ready_max_vf_only_num)
+		int vf_ref_only_count = 0;
+		int used_buf_count = 0;
+
+		get_constrained_buf_counts(hevc, &vf_ref_only_count, &used_buf_count);
+
+		if (run_ready_max_vf_only_num > 0 && vf_ref_only_count >= run_ready_max_vf_only_num)
 			ret = 0;
 
 		if (run_ready_display_q_num > 0 && kfifo_len(&hevc->display_q) >= run_ready_display_q_num)
 			ret = 0;
 
 		/* avoid more buffers consumed when switching resolution */
-		if (run_ready_max_buf_num == 0xff && get_used_buf_count(hevc) >= get_work_pic_num(hevc))
+		if (run_ready_max_buf_num == 0xff && used_buf_count >= get_work_pic_num(hevc))
 		{
 			check_buffer_status(hevc);
 			ret = 0;
 		}
-		else if (run_ready_max_buf_num && get_used_buf_count(hevc) >= run_ready_max_buf_num)
+		else if (run_ready_max_buf_num && used_buf_count >= run_ready_max_buf_num)
 			ret = 0;
 	}
 #endif
