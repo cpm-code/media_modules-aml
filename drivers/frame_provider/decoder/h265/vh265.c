@@ -1187,6 +1187,9 @@ struct PIC_s {
 	int m_aiRefPOCList1[MAX_SLICE_NUM][16];
 	struct PIC_s *ref_pic_l0[16];
 	struct PIC_s *ref_pic_l1[16];
+	u32 ref_en_l0_mask;
+	u32 ref_en_l1_mask;
+	u32 longterm_ref_mask;
 
 #ifdef SUPPORT_LONG_TERM_RPS
 	unsigned char long_term_ref;
@@ -4075,31 +4078,6 @@ static int config_mc_buffer(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 	return 0;
 }
 
-#ifdef SUPPORT_LONG_TERM_RPS
-static u32 build_longterm_ref_mask(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
-{
-	int ref_idx;
-	u32 mask = 0;
-	struct PIC_s *pic;
-
-	(void)hevc;
-
-	for (ref_idx = 0; ref_idx < cur_pic->RefNum_L0; ref_idx++) {
-		pic = cur_pic->ref_pic_l0[ref_idx];
-		if (pic && pic->long_term_ref)
-			mask |= (1U << ref_idx);
-	}
-
-	for (ref_idx = 0; ref_idx < cur_pic->RefNum_L1; ref_idx++) {
-		pic = cur_pic->ref_pic_l1[ref_idx];
-		if (pic && pic->long_term_ref)
-			mask |= (1U << (ref_idx + 16));
-	}
-
-	return mask;
-}
-#endif
-
 static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union param_u *params)
 {
 	int dbg_flag = get_dbg_flag(hevc);
@@ -4175,6 +4153,7 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 	struct PIC_s *pic;
 	struct PIC_s *valid_pics[MAX_REF_PIC_NUM];
 	int num_valid_pics = 0;
+	u32 longterm_ref_mask = 0;
 
 	for (i = 0; i < MAX_REF_ACTIVE; i++) {
 		cur_pic->ref_pic_l0[i] = NULL;
@@ -4201,6 +4180,9 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 					cur_pic->ref_pic_l0[i] = pic;
 			}
 		}
+
+		if (cur_pic->ref_pic_l0[i] && cur_pic->ref_pic_l0[i]->long_term_ref)
+			longterm_ref_mask |= (1U << i);
 	}
 
 	for (i = 0; i < cur_pic->RefNum_L1; i++) {
@@ -4214,7 +4196,12 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 					cur_pic->ref_pic_l1[i] = pic;
 			}
 		}
+
+		if (cur_pic->ref_pic_l1[i] && cur_pic->ref_pic_l1[i]->long_term_ref)
+			longterm_ref_mask |= (1U << (i + 16));
 	}
+
+	cur_pic->longterm_ref_mask = longterm_ref_mask;
 }
 
 static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
@@ -4449,6 +4436,8 @@ static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
 	                  (params->p.slice_type == B_SLICE) ? B_SLICE : 3;
 	pic->RefNum_L0 = num_ref_idx_l0_active;
 	pic->RefNum_L1 = num_ref_idx_l1_active;
+	pic->ref_en_l0_mask = num_ref_idx_l0_active ? ((1U << num_ref_idx_l0_active) - 1) : 0;
+	pic->ref_en_l1_mask = num_ref_idx_l1_active ? ((1U << num_ref_idx_l1_active) - 1) : 0;
 	resolve_ref_pic_list(hevc, pic);
 }
 
@@ -5213,7 +5202,7 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	WRITE_VREG(HEVC_MPRED_REF_NUM, data32);
 
 #ifdef SUPPORT_LONG_TERM_RPS
-	data32 = build_longterm_ref_mask(hevc, cur_pic);
+	data32 = cur_pic->longterm_ref_mask;
 	if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR) {
 		hevc_print(hevc, 0,
 			"LongTerm_Ref 0x%x\n", data32);
@@ -5223,14 +5212,10 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 #endif
 	WRITE_VREG(HEVC_MPRED_LT_REF, data32);
 
-	data32 = 0;
-	for (i = 0; i < hevc->RefNum_L0; i++)
-		data32 = data32 | (1 << i);
+	data32 = cur_pic->ref_en_l0_mask;
 	WRITE_VREG(HEVC_MPRED_REF_EN_L0, data32);
 
-	data32 = 0;
-	for (i = 0; i < hevc->RefNum_L1; i++)
-		data32 = data32 | (1 << i);
+	data32 = cur_pic->ref_en_l1_mask;
 	WRITE_VREG(HEVC_MPRED_REF_EN_L1, data32);
 
 	WRITE_VREG(HEVC_MPRED_CUR_POC, hevc->curr_POC);
