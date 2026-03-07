@@ -11977,10 +11977,11 @@ static unsigned char is_new_pic_available(struct hevc_state_s *hevc)
 {
 	struct PIC_s *new_pic = NULL;
 	struct PIC_s *pic;
+	struct PIC_s *referenced_error_pic = NULL;
 
 	/* recycle un-used pic */
 	int i;
-	int ref_pic = 0;
+	int decode_count = 0;
 	struct vdec_s *vdec = hw_to_vdec(hevc);
 	unsigned long flags;
 
@@ -11993,7 +11994,12 @@ static unsigned char is_new_pic_available(struct hevc_state_s *hevc)
 		pic = hevc->m_PIC[i];
 		if (pic == NULL || pic->index == -1) continue;
 
-		if (pic->referenced == 1) ref_pic++;
+		if (pic->output_ready == 0)
+			decode_count++;
+
+		if (referenced_error_pic == NULL &&
+		    pic->referenced == 1 && pic->error_mark == 1)
+			referenced_error_pic = pic;
 
 		if (pic->output_mark == 0 && pic->referenced == 0 && pic->output_ready == 0 && pic->vf_ref == 0)
 		{
@@ -12037,31 +12043,15 @@ static unsigned char is_new_pic_available(struct hevc_state_s *hevc)
 				new_pic->output_mark = 0;
 				put_mv_buf(hevc, new_pic);
 				hevc_print(hevc, 0, "force release error  pic %d  recieve_state %d \n", new_pic->POC, state);
-			} else {
-				for (i = 0; i < MAX_REF_PIC_NUM; i++) {
-					pic = hevc->m_PIC[i];
-					if (pic == NULL || pic->index == -1)
-						continue;
-					if ((pic->referenced == 1) && (pic->error_mark == 1)) {
-						spin_unlock_irqrestore(&lock, flags);
-						flush_output(hevc, pic);
-						hevc_print(hevc, 0, "DPB error, neeed fornce flush  recieve_state %d \n", state);
-						return 0;
-					}
-				}
+			} else if (referenced_error_pic) {
+				spin_unlock_irqrestore(&lock, flags);
+				flush_output(hevc, referenced_error_pic);
+				hevc_print(hevc, 0, "DPB error, neeed fornce flush  recieve_state %d \n", state);
+				return 0;
 			}
 		}
 	}
 	if (new_pic == NULL) {
-		int decode_count = 0;
-
-		for (i = 0; i < MAX_REF_PIC_NUM; i++) {
-			pic = hevc->m_PIC[i];
-			if (pic == NULL || pic->index == -1)
-				continue;
-			if (pic->output_ready == 0)
-				decode_count++;
-		}
 		if (decode_count >=
 				hevc->param.p.sps_max_dec_pic_buffering_minus1_0 + detect_stuck_buffer_margin) {
 			if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR_MORE)
@@ -12084,6 +12074,7 @@ static void check_buffer_status(struct hevc_state_s *hevc)
 	int i;
 	struct PIC_s *new_pic = NULL;
 	struct PIC_s *pic;
+	struct PIC_s *referenced_error_pic = NULL;
 	struct vdec_s *vdec = hw_to_vdec(hevc);
 
 	enum receviver_start_e state = RECEIVER_INACTIVE;
@@ -12111,6 +12102,11 @@ static void check_buffer_status(struct hevc_state_s *hevc)
 			pic = hevc->m_PIC[i];
 			if (pic == NULL || pic->index == -1)
 					continue;
+
+			if (referenced_error_pic == NULL &&
+			    pic->referenced == 1 && pic->error_mark == 1)
+				referenced_error_pic = pic;
+
 			if ((pic->referenced == 0) &&
 					(pic->error_mark == 1) &&
 					(pic->output_mark == 1)) {
@@ -12125,17 +12121,9 @@ static void check_buffer_status(struct hevc_state_s *hevc)
 			new_pic->output_mark = 0;
 			put_mv_buf(hevc, new_pic);
 			hevc_print(hevc, 0, "check_buffer_status force release error  pic %d  recieve_state %d \n", new_pic->POC, state);
-		} else {
-			for (i = 0; i < MAX_REF_PIC_NUM; i++) {
-				pic = hevc->m_PIC[i];
-				if (pic == NULL || pic->index == -1)
-					continue;
-				if ((pic->referenced == 1) && (pic->error_mark == 1)) {
-					flush_output(hevc, pic);
-					hevc_print(hevc, 0, "check_buffer_status DPB error, neeed fornce flush  recieve_state %d \n", state);
-					break;
-				}
-			}
+		} else if (referenced_error_pic) {
+			flush_output(hevc, referenced_error_pic);
+			hevc_print(hevc, 0, "check_buffer_status DPB error, neeed fornce flush  recieve_state %d \n", state);
 		}
 	}
 }
