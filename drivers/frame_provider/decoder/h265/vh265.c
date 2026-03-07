@@ -4974,16 +4974,27 @@ static void decoder_hw_reset(void)
 }
 
 #ifdef MCRCC_ENABLE
+static inline unsigned int get_mcrcc_canvas_value(struct PIC_s *pic)
+{
+	unsigned int canvas;
+
+	if (!pic) return 0;
+
+	canvas = (pic->mc_canvas_u_v << 8) | pic->mc_canvas_y;
+	return canvas | (canvas << 16);
+}
+
 static void config_mcrcc_axi_hw(struct hevc_state_s *hevc, int slice_type)
 {
 	unsigned int rdata32;
 	unsigned int rdata32_2;
+	struct PIC_s *cur_pic = hevc->cur_pic;
 	int l0_cnt = 0;
 	int l1_cnt = 0x7fff;
 
 	if (get_double_write_mode(hevc) & 0x10) {
-		l0_cnt = hevc->cur_pic->RefNum_L0;
-		l1_cnt = hevc->cur_pic->RefNum_L1;
+		l0_cnt = cur_pic->RefNum_L0;
+		l1_cnt = cur_pic->RefNum_L1;
 	}
 
 	WRITE_VREG(HEVCD_MCRCC_CTL1, 0x2);	/* reset mcrcc */
@@ -4996,41 +5007,59 @@ static void config_mcrcc_axi_hw(struct hevc_state_s *hevc, int slice_type)
 
 	if (slice_type == B_SLICE) /* B-PIC */
 	{
-		/* Programme canvas0 */
-		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (0 << 1) | 0);
-		rdata32 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
-		rdata32 = rdata32 & 0xffff;
-		rdata32 = rdata32 | (rdata32 << 16);
-		WRITE_VREG(HEVCD_MCRCC_CTL2, rdata32);
+		if (cur_pic->ref_pic_l0[0] && cur_pic->ref_pic_l1[0] &&
+		    (!(l1_cnt > 1) || cur_pic->ref_pic_l1[1])) {
+			rdata32 = get_mcrcc_canvas_value(cur_pic->ref_pic_l0[0]);
+			rdata32_2 = get_mcrcc_canvas_value(cur_pic->ref_pic_l1[0]);
+			if (rdata32 == rdata32_2 && l1_cnt > 1)
+				rdata32_2 = get_mcrcc_canvas_value(cur_pic->ref_pic_l1[1]);
+		} else {
+			/* Programme canvas0 */
+			WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (0 << 1) | 0);
+			rdata32 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
+			rdata32 = rdata32 & 0xffff;
+			rdata32 = rdata32 | (rdata32 << 16);
 
-		/* Programme canvas1 */
-		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (16 << 8) | (1 << 1) | 0);
-		rdata32_2 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
-		rdata32_2 = rdata32_2 & 0xffff;
-		rdata32_2 = rdata32_2 | (rdata32_2 << 16);
-		if (rdata32 == rdata32_2 && l1_cnt > 1) {
+			/* Programme canvas1 */
+			WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (16 << 8) | (1 << 1) | 0);
 			rdata32_2 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
 			rdata32_2 = rdata32_2 & 0xffff;
 			rdata32_2 = rdata32_2 | (rdata32_2 << 16);
+			if (rdata32 == rdata32_2 && l1_cnt > 1) {
+				rdata32_2 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
+				rdata32_2 = rdata32_2 & 0xffff;
+				rdata32_2 = rdata32_2 | (rdata32_2 << 16);
+			}
 		}
+		WRITE_VREG(HEVCD_MCRCC_CTL2, rdata32);
 		WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32_2);
 	}
 	else /* P-PIC */
 	{
-		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (1 << 1) | 0);
-		rdata32 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
-		rdata32 = rdata32 & 0xffff;
-		rdata32 = rdata32 | (rdata32 << 16);
-		WRITE_VREG(HEVCD_MCRCC_CTL2, rdata32);
+		if (cur_pic->ref_pic_l0[0] && (l0_cnt == 1 || cur_pic->ref_pic_l0[1])) {
+			rdata32 = get_mcrcc_canvas_value(cur_pic->ref_pic_l0[0]);
+			WRITE_VREG(HEVCD_MCRCC_CTL2, rdata32);
 
-		if (l0_cnt == 1) {
-			WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32);
+			if (l0_cnt == 1)
+				WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32);
+			else
+				WRITE_VREG(HEVCD_MCRCC_CTL3, get_mcrcc_canvas_value(cur_pic->ref_pic_l0[1]));
 		} else {
-			/* Programme canvas1 */
+			WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, (0 << 8) | (1 << 1) | 0);
 			rdata32 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
 			rdata32 = rdata32 & 0xffff;
 			rdata32 = rdata32 | (rdata32 << 16);
-			WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32);
+			WRITE_VREG(HEVCD_MCRCC_CTL2, rdata32);
+
+			if (l0_cnt == 1) {
+				WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32);
+			} else {
+				/* Programme canvas1 */
+				rdata32 = READ_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR);
+				rdata32 = rdata32 & 0xffff;
+				rdata32 = rdata32 | (rdata32 << 16);
+				WRITE_VREG(HEVCD_MCRCC_CTL3, rdata32);
+			}
 		}
 	}
 	/* enable mcrcc progressive-mode */
