@@ -5085,7 +5085,6 @@ static void config_aux_buf(struct hevc_state_s *hevc)
 
 static void config_mpred_hw(struct hevc_state_s *hevc)
 {
-	int i;
 	unsigned int data32;
 	struct PIC_s *cur_pic = hevc->cur_pic;
 	struct PIC_s *col_pic = hevc->col_pic;
@@ -5098,11 +5097,8 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	int cu_size_log2 = 3;
 
 	int mpred_mv_rd_start_addr;
-	int mpred_curr_lcu_x;
-	int mpred_curr_lcu_y;
 	int mpred_above_buf_start;
 	int mpred_mv_rd_ptr;
-	int mpred_mv_rd_ptr_p1;
 	int mpred_mv_rd_end_addr;
 	int MV_MEM_UNIT;
 	int mpred_mv_wr_ptr;
@@ -5127,14 +5123,10 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	}
 
 	mpred_mv_rd_start_addr = col_pic->mpred_mv_wr_start_addr;
-	data32 = READ_VREG(HEVC_MPRED_CURR_LCU);
-	mpred_curr_lcu_x = data32 & 0xffff;
-	mpred_curr_lcu_y = (data32 >> 16) & 0xffff;
 
 	MV_MEM_UNIT = hevc->lcu_size_log2 == 6 ? 0x200 : hevc->lcu_size_log2 == 5 ? 0x80 : 0x20;
 	mpred_mv_rd_ptr = mpred_mv_rd_start_addr + (hevc->slice_addr * MV_MEM_UNIT);
 
-	mpred_mv_rd_ptr_p1 = mpred_mv_rd_ptr + MV_MEM_UNIT;
 	mpred_mv_rd_end_addr = mpred_mv_rd_start_addr + col_pic->mv_size;
 
 	mpred_above_buf_start = hevc->work_space_buf->mpred_above.buf_start;
@@ -5775,7 +5767,6 @@ static struct PIC_s *get_new_pic(struct hevc_state_s *hevc, union param_u *rpm_p
 		new_pic->referenced = 1;
 		new_pic->decode_idx = hevc->decode_idx;
 		new_pic->slice_idx = 0;
-		new_pic->referenced = 1;
 		new_pic->output_mark = 0;
 		new_pic->recon_mark = 0;
 		new_pic->error_mark = 0;
@@ -5906,7 +5897,6 @@ static struct PIC_s *v4l_get_new_pic(struct hevc_state_s *hevc, union param_u *r
 	new_pic->referenced = 1;
 	new_pic->decode_idx = hevc->decode_idx;
 	new_pic->slice_idx = 0;
-	new_pic->referenced = 1;
 	new_pic->output_mark = 0;
 	new_pic->recon_mark = 0;
 	new_pic->error_mark = 0;
