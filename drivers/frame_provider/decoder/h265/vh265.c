@@ -6910,6 +6910,7 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 				hevc->m_pocRandomAccess = -MAX_INT;
 		}
 		else if (hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA ||
+		         hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_CRA ||
 		         hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLANT ||
 		         hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA_N_LP)
 		{
