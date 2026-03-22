@@ -148,6 +148,7 @@
 static struct semaphore h265_sema;
 
 struct hevc_state_s;
+struct PIC_s;
 static int hevc_print(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...);
 static int hevc_print_cont(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...);
 static int vh265_vf_states(struct vframe_states *states, void *);
@@ -171,6 +172,10 @@ static int vh265_local_init(struct hevc_state_s *hevc);
 static void vh265_check_timer_func(unsigned long arg);
 static void config_decode_mode(struct hevc_state_s *hevc);
 static int check_data_size(struct vdec_s *vdec);
+static inline void hevc_cra_recovery_log(struct hevc_state_s *hevc, const char *event, struct PIC_s *pic, u64 pts_us64);
+static inline void hevc_cra_recovery_reset(struct hevc_state_s *hevc);
+static inline void hevc_cra_recovery_start(struct hevc_state_s *hevc);
+static inline bool hevc_cra_recovery_handle_output(struct hevc_state_s *hevc, struct PIC_s *pic, u64 pts_us64);
 
 static const char vh265_dec_id[] = "vh265-dev";
 
@@ -383,6 +388,9 @@ static u32 buffer_mode_dbg = 0xffff0000;
  *only for mode 0 and 1.
  */
 static u32 nal_skip_policy = 2;
+
+/* bit 0: enable CRA-specific suppression of output pictures with error_mark. */
+static u32 cra_recovery_policy = 1;
 
 /*
  *bit 0, 1: only display I picture;
@@ -2079,6 +2087,7 @@ static void hevc_init_stru(struct hevc_state_s *hevc, struct BuffInfo_s *buf_spe
 
 	hevc->PB_skip_mode = nal_skip_policy & 0x3;
 	hevc->PB_skip_count_after_decoding = (nal_skip_policy >> 16) & 0xffff;
+	hevc_cra_recovery_reset(hevc);
 
 	if (hevc->PB_skip_mode == 0)
 		hevc->ignore_bufmgr_error = 0x1;
@@ -6002,6 +6011,7 @@ static void flush_output(struct hevc_state_s *hevc, struct PIC_s *pic)
 			    (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME) ||
 			    (get_dbg_flag(hevc) & H265_DEBUG_NO_DISPLAY))
 			{
+				hevc_cra_recovery_log(hevc, "display_suppress_flush", pic_display, pic_display->pts64);
 				pic_display->output_ready = 0;
 
 				if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR)
@@ -6288,6 +6298,7 @@ static inline void hevc_pre_pic(struct hevc_state_s *hevc, struct PIC_s *pic)
 					|| (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME)
 					|| (get_dbg_flag(hevc) & H265_DEBUG_NO_DISPLAY))
 				{
+					hevc_cra_recovery_log(hevc, "display_suppress_pre", pic_display, pic_display->pts64);
 					pic_display->output_ready = 0;
 					if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR)
 					{
@@ -6904,8 +6915,11 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 			if (hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_CRA ||
 			    hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA ||
 			    hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLANT ||
-			    hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA_N_LP)
-			    hevc->m_pocRandomAccess = hevc->curr_POC;
+			    hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA_N_LP) {
+				hevc->m_pocRandomAccess = hevc->curr_POC;
+				if (hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_CRA)
+					hevc_cra_recovery_start(hevc);
+			}
 			else
 				hevc->m_pocRandomAccess = -MAX_INT;
 		}
@@ -6915,6 +6929,8 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 		         hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_BLA_N_LP)
 		{
 			hevc->m_pocRandomAccess = hevc->curr_POC;
+			if (hevc->m_nalUnitType == NAL_UNIT_CODED_SLICE_CRA)
+				hevc_cra_recovery_start(hevc);
 		}
 		else if ((hevc->curr_POC < hevc->m_pocRandomAccess) &&
 		         (nal_skip_policy >= 3) &&
@@ -7247,6 +7263,7 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 
 			if (is_skip_decoding(hevc, hevc->cur_pic)) // 2 for DV FEL so this is true.
 			{
+				hevc_cra_recovery_log(hevc, "skip_decoding_ref", hevc->cur_pic, hevc->cur_pic ? hevc->cur_pic->pts64 : 0);
 				/*count info*/
 				vdec_count_info(hevc->gvs, hevc->cur_pic->error_mark, hevc->cur_pic->stream_offset);
 
@@ -7288,6 +7305,7 @@ static int hevc_slice_segment_header_process(struct hevc_state_s *hevc, union pa
 
 	if (is_skip_decoding(hevc, hevc->cur_pic)) // True for DV FEL.
 	{
+		hevc_cra_recovery_log(hevc, "skip_decoding_mc", hevc->cur_pic, hevc->cur_pic ? hevc->cur_pic->pts64 : 0);
 		if (get_dbg_flag(hevc))
 			hevc_print(hevc, 0, "Discard this picture index %d\n", hevc->cur_pic->index);
 
@@ -8733,6 +8751,134 @@ static inline void hevc_update_gvs(struct hevc_state_s *hevc, struct PIC_s *pic)
 		hevc->gvs->ratio_control = hevc->ratio_control;
 }
 
+#define CRA_RECOVERY_OBSERVE_OUTPUTS 16
+
+static inline void hevc_cra_recovery_log(
+	struct hevc_state_s *hevc,
+	const char *event,
+	struct PIC_s *pic,
+	u64 pts_us64)
+{
+	struct vdec_s *vdec = hw_to_vdec(hevc);
+	if (!vdec) return;
+
+	pr_info("cra[%s] dec=%s epoch=%u active=%u dirty=%u pts=%llu out=%u start=%llu dirty_pts=%llu poc=%d slice=%u err=%u dis=%u outmark=%u ref=%u decode_idx=%d col_poc=%d\n",
+		event,
+		vdec->vf_provider_name,
+		vdec->cra_recovery_epoch,
+		vdec->cra_recovery_active ? 1 : 0,
+		vdec->cra_recovery_dirty ? 1 : 0,
+		(unsigned long long)pts_us64,
+		vdec->cra_recovery_output_count,
+		(unsigned long long)vdec->cra_recovery_start_pts_us64,
+		(unsigned long long)vdec->cra_recovery_dirty_pts_us64,
+		pic ? pic->POC : INVALID_POC,
+		pic ? pic->slice_type : 0,
+		pic ? pic->error_mark : 0,
+		pic ? pic->dis_mark : 0,
+		pic ? pic->output_mark : 0,
+		pic ? pic->referenced : 0,
+		pic ? pic->decode_idx : -1,
+		hevc->Col_POC);
+}
+
+static inline void hevc_cra_recovery_reset(
+	struct hevc_state_s *hevc)
+{
+	struct vdec_s *vdec = hw_to_vdec(hevc);
+	if (!vdec) return;
+
+	vdec->cra_recovery_active = false;
+	vdec->cra_recovery_dirty = false;
+	vdec->cra_recovery_start_pts_us64 = 0;
+	vdec->cra_recovery_dirty_pts_us64 = 0;
+	vdec->cra_recovery_output_count = 0;
+	vdec->cra_recovery_last_decode_idx = -1;
+	vdec->cra_recovery_last_poc = INVALID_POC;
+}
+
+static inline void hevc_cra_recovery_start(
+	struct hevc_state_s *hevc)
+{
+	struct vdec_s *vdec = hw_to_vdec(hevc);
+	struct PIC_s *pic = hevc->cur_pic;
+	int decode_idx = pic ? pic->decode_idx : -1;
+	int poc = pic ? pic->POC : hevc->curr_POC;
+
+	if (!vdec || !cra_recovery_policy) return;
+
+	if (((decode_idx >= 0) &&
+	     (decode_idx == vdec->cra_recovery_last_decode_idx)) ||
+	    (poc == vdec->cra_recovery_last_poc)) return;
+
+	vdec->cra_recovery_epoch++;
+	vdec->cra_recovery_active = true;
+	vdec->cra_recovery_dirty = false;
+	vdec->cra_recovery_start_pts_us64 = 0;
+	vdec->cra_recovery_dirty_pts_us64 = 0;
+	vdec->cra_recovery_output_count = 0;
+	vdec->cra_recovery_last_decode_idx = decode_idx;
+	vdec->cra_recovery_last_poc = poc;
+
+	hevc_cra_recovery_log(hevc, "start", pic, 0);
+}
+
+static inline bool hevc_cra_recovery_handle_output(
+	struct hevc_state_s *hevc,
+	struct PIC_s *pic,
+	u64 pts_us64)
+{
+	struct vdec_s *vdec = hw_to_vdec(hevc);
+	bool suppress = false;
+
+	if (!vdec || !cra_recovery_policy || !vdec->cra_recovery_active)
+		return false;
+
+	suppress = pic && pic->error_mark;
+	if (suppress) {
+		vdec->cra_recovery_dirty = true;
+
+		if (!vdec->cra_recovery_dirty_pts_us64 && pts_us64)
+			vdec->cra_recovery_dirty_pts_us64 = pts_us64;
+
+		hevc_cra_recovery_log(hevc, "dirty", pic, pts_us64);
+	}
+
+	if (!vdec->cra_recovery_start_pts_us64 && pts_us64)
+		vdec->cra_recovery_start_pts_us64 = pts_us64;
+
+	hevc_cra_recovery_log(hevc, "output", pic, pts_us64);
+
+	vdec->cra_recovery_output_count++;
+	if (vdec->cra_recovery_output_count >= CRA_RECOVERY_OBSERVE_OUTPUTS) {
+		hevc_cra_recovery_log(hevc, "complete", pic, pts_us64);
+		vdec->cra_recovery_active = false;
+	}
+
+	if (!suppress)
+		return false;
+
+	pic->output_ready = 0;
+	pic->show_frame = false;
+	hevc_cra_recovery_log(hevc, "suppress", pic, pts_us64);
+
+	/* Treat CRA-specific suppression as a dropped concealed frame. */
+	hevc->gvs->drop_frame_count++;
+	hevc->gvs->error_frame_count++;
+	if (pic->slice_type == I_SLICE) {
+		hevc->gvs->i_lost_frames++;
+		hevc->gvs->i_concealed_frames++;
+	} else if (pic->slice_type == P_SLICE) {
+		hevc->gvs->p_lost_frames++;
+		hevc->gvs->p_concealed_frames++;
+	} else if (pic->slice_type == B_SLICE) {
+		hevc->gvs->b_lost_frames++;
+		hevc->gvs->b_concealed_frames++;
+	}
+
+	return true;
+}
+
 static void put_vf_to_display_q(struct hevc_state_s *hevc, struct vframe_s *vf)
 {
 	hevc->vf_pre_count++;
@@ -8837,6 +8983,12 @@ static int post_video_frame(struct vdec_s *vdec, struct PIC_s *pic)
 			vf->pts_us64 = hevc->last_pts_us64 + (DUR2PTS(hevc->frame_dur) * 100 / 9);
 
 		hevc->last_pts_us64 = vf->pts_us64;
+		if (hevc_cra_recovery_handle_output(hevc, pic, vf->pts_us64)) {
+			vh265_vf_put(vf, vdec);
+			atomic_add(1, &hevc->vf_get_count);
+			hevc->vf_pre_count++;
+			return 0;
+		}
 
 		if ((get_dbg_flag(hevc) & H265_DEBUG_OUT_PTS) != 0)
 			hevc_print(hevc, 0, "H265 dec out pts: vf->pts=%d, vf->pts_us64 = %lld\n", vf->pts, vf->pts_us64);
@@ -11317,7 +11469,7 @@ int vh265_dec_status(struct vdec_s *vdec, struct vdec_info *vstatus)
 	}
 
 	snprintf(vstatus->vdec_name, sizeof(vstatus->vdec_name),
-		"%s", DRIVER_NAME);
+		"%s", vdec->vf_provider_name);
 	vstatus->ratio_control = hevc->ratio_control;
 	return 0;
 }
@@ -13821,6 +13973,7 @@ static struct mconfig h265_configs[] = {
 	MC_PU32("decode_pic_begin", &decode_pic_begin),
 	MC_PU32("slice_parse_begin", &slice_parse_begin),
 	MC_PU32("nal_skip_policy", &nal_skip_policy),
+	MC_PU32("cra_recovery_policy", &cra_recovery_policy),
 	MC_PU32("i_only_flag", &i_only_flag),
 	MC_PU32("error_handle_policy", &error_handle_policy),
 	MC_PU32("error_handle_threshold", &error_handle_threshold),
@@ -13992,6 +14145,9 @@ MODULE_PARM_DESC(slice_parse_begin, "\n amvdec_h265 slice_parse_begin\n");
 
 module_param(nal_skip_policy, uint, 0664);
 MODULE_PARM_DESC(nal_skip_policy, "\n amvdec_h265 nal_skip_policy\n");
+
+module_param(cra_recovery_policy, uint, 0664);
+MODULE_PARM_DESC(cra_recovery_policy, "\n amvdec_h265 cra_recovery_policy\n");
 
 module_param(i_only_flag, uint, 0664);
 MODULE_PARM_DESC(i_only_flag, "\n amvdec_h265 i_only_flag\n");

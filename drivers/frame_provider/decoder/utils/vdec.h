@@ -317,6 +317,15 @@ struct vdec_s {
 	bool is_reset;
 	bool dolby_meta_with_el;
 
+	u32 cra_recovery_epoch;
+	bool cra_recovery_active;
+	bool cra_recovery_dirty;
+	u64 cra_recovery_start_pts_us64;
+	u64 cra_recovery_dirty_pts_us64;
+	u32 cra_recovery_output_count;
+	int cra_recovery_last_decode_idx;
+	int cra_recovery_last_poc;
+
 	/* canvas */
 	int (*get_canvas)(unsigned int index, unsigned int base);
 	int (*get_canvas_ex)(int type, int id);
