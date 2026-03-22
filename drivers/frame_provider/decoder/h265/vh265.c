@@ -230,7 +230,6 @@ static u32 dirty_buffersize_threshold = 0x800000;
 #define HEVC_CM_HEADER_LENGTH 0x3629
 #define HEVC_CM_HEADER_OFFSET 0x362b
 #define HEVC_SAO_CTRL9 0x362d
-#define LOSLESS_COMPRESS_MODE
 
 /* DOUBLE_WRITE_MODE is enabled only when NV21 8 bit output is needed */
 /* double_write_mode:
@@ -1251,10 +1250,7 @@ struct PIC_s {
 	int mem_saving_mode;
 	u32 bit_depth_luma;
 	u32 bit_depth_chroma;
-
-#ifdef LOSLESS_COMPRESS_MODE
 	unsigned int losless_comp_body_size;
-#endif
 
 	unsigned char pic_struct;
 	int vf_ref;
@@ -1498,10 +1494,7 @@ struct hevc_state_s {
 	int PB_skip_count_after_decoding;
 
 	int mem_saving_mode;
-
-#ifdef LOSLESS_COMPRESS_MODE
 	unsigned int losless_comp_body_size;
-#endif
 
 	int pts_mode;
 	int last_lookup_pts;
@@ -3542,8 +3535,6 @@ static void uninit_pic_list(struct hevc_state_s *hevc)
 		}
 	}
 }
-
-#ifdef LOSLESS_COMPRESS_MODE
 static void init_decode_head_hw(struct hevc_state_s *hevc)
 {
 
@@ -3591,7 +3582,6 @@ static void init_decode_head_hw(struct hevc_state_s *hevc)
 			   hevc->pic_w, hevc->pic_h, losless_comp_body_size,
 			   losless_comp_header_size);
 }
-#endif
 
 #define HEVCD_MPP_ANC2AXI_TBL_DATA 0x3464
 
@@ -3647,10 +3637,8 @@ static void init_pic_list_hw(struct hevc_state_s *hevc)
 	for (i = 0; i < 32; i++)
 		WRITE_VREG(HEVCD_MPP_ANC_CANVAS_DATA_ADDR, 0);
 
-#ifdef LOSLESS_COMPRESS_MODE
 	if ((dw_mode & 0x10) == 0)
 		init_decode_head_hw(hevc);
-#endif
 }
 
 static void dump_pic_list(struct hevc_state_s *hevc)
@@ -5238,7 +5226,6 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 
 	if (hevc->new_pic)
 		WRITE_VREG(HEVC_SAO_Y_START_ADDR, 0xffffffff);
-#ifdef LOSLESS_COMPRESS_MODE
 	/*SUPPORT_10BIT*/
 	if ((get_double_write_mode(hevc) & 0x10) == 0) {
 		data32 = READ_VREG(HEVC_SAO_CTRL5);
@@ -5266,38 +5253,20 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 
 	if (hevc->mmu_enable)
 		WRITE_VREG(HEVC_CM_HEADER_START_ADDR, cur_pic->header_adr);
-#else
-	data32 = cur_pic->mc_y_adr;
-	WRITE_VREG(HEVC_SAO_Y_START_ADDR, data32);
-#endif
 	data32 = (mc_buffer_size_u_v_h << 16) << 1;
 	WRITE_VREG(HEVC_SAO_Y_LENGTH, data32);
 
-#ifdef LOSLESS_COMPRESS_MODE
 	/*SUPPORT_10BIT*/
 	if (get_double_write_mode(hevc))
 		WRITE_VREG(HEVC_SAO_C_START_ADDR, cur_pic->dw_u_v_adr);
-#else
-	data32 = cur_pic->mc_u_v_adr;
-	WRITE_VREG(HEVC_SAO_C_START_ADDR, data32);
-#endif
 	data32 = (mc_buffer_size_u_v_h << 16);
 	WRITE_VREG(HEVC_SAO_C_LENGTH, data32);
 
-#ifdef LOSLESS_COMPRESS_MODE
 	/*SUPPORT_10BIT*/
 	if (get_double_write_mode(hevc)) {
 		WRITE_VREG(HEVC_SAO_Y_WPTR, cur_pic->dw_y_adr);
 		WRITE_VREG(HEVC_SAO_C_WPTR, cur_pic->dw_u_v_adr);
 	}
-#else
-	/* multi tile to do... */
-	data32 = cur_pic->mc_y_adr;
-	WRITE_VREG(HEVC_SAO_Y_WPTR, data32);
-
-	data32 = cur_pic->mc_u_v_adr;
-	WRITE_VREG(HEVC_SAO_C_WPTR, data32);
-#endif
 	/* DBLK CONFIG HERE */
 	if (hevc->new_pic) {
 		if (vh265_cpu_id >= AM_MESON_CPU_MAJOR_ID_G12A) {
@@ -6611,10 +6580,8 @@ static int hevc_slice_segment_header_init_state(struct hevc_state_s *hevc,
 		hevc->frame_width = hevc->pic_w;
 		hevc->frame_height = hevc->pic_h;
 
-#ifdef LOSLESS_COMPRESS_MODE
 		if ((get_double_write_mode(hevc) & 0x10) == 0)
 			init_decode_head_hw(hevc);
-#endif
 	}
 
 	if (hevc->bit_depth_chroma > 10 || hevc->bit_depth_luma > 10 ||
