@@ -4722,7 +4722,6 @@ static void hevc_init_decoder_hw(struct hevc_state_s *hevc, int decode_pic_begin
 {
 	unsigned int data32;
 	int dbg_flag = get_dbg_flag(hevc);
-	int i;
 
 #if 0
 	if (vh265_cpu_id >= MESON_CPU_MAJOR_ID_G12A)
@@ -4878,7 +4877,6 @@ static void hevc_init_decoder_hw(struct hevc_state_s *hevc, int decode_pic_begin
 
 static void decoder_hw_reset(void)
 {
-	int i;
 	unsigned int data32;
 
 	/* reset iqit to start mem init again */
