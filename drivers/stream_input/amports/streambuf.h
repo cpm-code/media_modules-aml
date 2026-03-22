@@ -18,6 +18,8 @@
 #ifndef STREAMBUF_H
 #define STREAMBUF_H
 #include <linux/amlogic/media/utils/amports_config.h>
+#include <linux/timer.h>
+#include <linux/wait.h>
 
 #define BUF_FLAG_ALLOC          0x01
 #define BUF_FLAG_IN_USE         0x02
