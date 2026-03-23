@@ -928,7 +928,7 @@ static inline bool close_to(int a, int b, int m)
 
 #ifdef MULTI_INSTANCE_SUPPORT
 static int av1_print_cont(struct AV1HW_s *hw,
-	int flag, const char *fmt, ...)
+	int flag, const char *fmt, ...) __printf(3, 4)
 {
 	unsigned char buf[HEVC_PRINT_BUF];
 	int len = 0;

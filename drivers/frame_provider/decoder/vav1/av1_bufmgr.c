@@ -677,7 +677,7 @@ static void swap_frame_buffers(AV1Decoder *pbi, int frame_decoded) {
 }
 
 void aom_internal_error(struct aom_internal_error_info *info,
-                        aom_codec_err_t error, const char *fmt, ...) {
+                        aom_codec_err_t error, const char *fmt, ...) __printf(3, 4) {
   va_list ap;
 
   info->error_code = error;
