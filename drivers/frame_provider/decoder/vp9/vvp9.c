@@ -1256,7 +1256,7 @@ struct VP9Decoder_s {
 	struct trace_decoder_name trace;
 };
 
-static int vp9_print(struct VP9Decoder_s *pbi,
+static int __printf(3, 4) vp9_print(struct VP9Decoder_s *pbi,
 	int flag, const char *fmt, ...)
 {
 #define HEVC_PRINT_BUF		512

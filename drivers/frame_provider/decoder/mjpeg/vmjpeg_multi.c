@@ -120,7 +120,7 @@ unsigned int mmjpeg_debug_mask = 0xff;
 #define PRINT_FLAG_V4L_DETAIL         0x8000
 #define IGNORE_PARAM_FROM_CONFIG      0x8000000
 
-int mmjpeg_debug_print(int index, int debug_flag, const char *fmt, ...)
+int __printf(3, 4) mmjpeg_debug_print(int index, int debug_flag, const char *fmt, ...)
 {
 	if (((debug_enable & debug_flag) &&
 		((1 << index) & mmjpeg_debug_mask))

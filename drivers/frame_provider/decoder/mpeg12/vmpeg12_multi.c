@@ -397,7 +397,7 @@ static int error_proc_policy = 0x1;
 
 
 
-int debug_print(int index, int debug_flag, const char *fmt, ...)
+int __printf(3, 4) debug_print(int index, int debug_flag, const char *fmt, ...)
 {
 	if (((debug_enable & debug_flag) &&
 		((1 << index) & mpeg12_debug_mask))
@@ -3981,5 +3981,4 @@ module_exit(ammvdec_mpeg12_driver_remove_module);
 
 MODULE_DESCRIPTION("AMLOGIC MULTI MPEG1/2 Video Decoder Driver");
 MODULE_LICENSE("GPL");
-
 

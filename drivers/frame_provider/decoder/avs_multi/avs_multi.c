@@ -614,7 +614,7 @@ static void WRITE_VREG_DBG2(unsigned adr, unsigned val)
 
 #undef pr_info
 #define pr_info printk
-static int debug_print(struct vdec_avs_hw_s *hw,
+static int __printf(3, 4) debug_print(struct vdec_avs_hw_s *hw,
 	int flag, const char *fmt, ...)
 {
 #define AVS_PRINT_BUF		256
@@ -640,7 +640,7 @@ static int debug_print(struct vdec_avs_hw_s *hw,
 	return 0;
 }
 
-static int debug_print_cont(struct vdec_avs_hw_s *hw,
+static int __printf(3, 4) debug_print_cont(struct vdec_avs_hw_s *hw,
 	int flag, const char *fmt, ...)
 {
 	unsigned char buf[AVS_PRINT_BUF];

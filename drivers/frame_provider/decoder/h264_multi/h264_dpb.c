@@ -32,7 +32,7 @@
 
 #undef pr_info
 #define pr_info printk
-int dpb_print(int index, int debug_flag, const char *fmt, ...)
+int __printf(3, 4) dpb_print(int index, int debug_flag, const char *fmt, ...)
 {
 	if (((h264_debug_flag & debug_flag) &&
 		((1 << index) & h264_debug_mask))
@@ -50,7 +50,7 @@ int dpb_print(int index, int debug_flag, const char *fmt, ...)
 	return 0;
 }
 
-int dpb_print_cont(int index, int debug_flag, const char *fmt, ...)
+int __printf(3, 4) dpb_print_cont(int index, int debug_flag, const char *fmt, ...)
 {
 	if (((h264_debug_flag & debug_flag) &&
 		((1 << index) & h264_debug_mask))
@@ -6012,4 +6012,3 @@ int dpb_check_ref_list_error(
 	}
 	return 0;
 }
-

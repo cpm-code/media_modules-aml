@@ -184,7 +184,7 @@ static u32 run_ready_min_buf_num = 2;
 #define PRINT_FLAG_V4L_DETAIL         0x8000
 #define IGNORE_PARAM_FROM_CONFIG      0x8000000
 
-int mmpeg4_debug_print(int index, int debug_flag, const char *fmt, ...)
+int __printf(3, 4) mmpeg4_debug_print(int index, int debug_flag, const char *fmt, ...)
 {
 	if (((debug_enable & debug_flag) &&
 		((1 << index) & mpeg4_debug_mask))
@@ -2929,4 +2929,3 @@ module_exit(ammvdec_mpeg4_driver_remove_module);
 MODULE_DESCRIPTION("AMLOGIC MPEG4 Video Decoder Driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tim Yao <timyao@amlogic.com>");
-

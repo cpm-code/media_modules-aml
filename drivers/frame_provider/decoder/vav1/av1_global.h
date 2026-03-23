@@ -2332,9 +2332,8 @@ void av1_bufmgr_ctx_reset(AV1Decoder *pbi, BufferPool *const pool, AV1_COMMON *c
 #define PRINT_FLAG_VDEC_DATA    0x80000000
 #endif
 
-int av1_print2(int flag, const char *fmt, ...);
+int av1_print2(int flag, const char *fmt, ...) __printf(2, 3);
 
 unsigned char av1_is_debug(int flag);
 
 #endif
-
