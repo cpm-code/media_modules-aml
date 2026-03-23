@@ -148,8 +148,8 @@ static struct semaphore h265_sema;
 
 struct hevc_state_s;
 struct PIC_s;
-static int hevc_print(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...);
-static int hevc_print_cont(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...);
+static int hevc_print(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...) __printf(3, 4);
+static int hevc_print_cont(struct hevc_state_s *hevc, int debug_flag, const char *fmt, ...) __printf(3, 4);
 static int vh265_vf_states(struct vframe_states *states, void *);
 static struct vframe_s *vh265_vf_peek(void *);
 static struct vframe_s *vh265_vf_get(void *);
@@ -1130,7 +1130,7 @@ static void init_buff_spec(struct hevc_state_s *hevc, struct BuffInfo_s *buf_spe
 	buf_spec->end_adr = buf_spec->lmem.buf_start + buf_spec->lmem.buf_size;
 
 	if (hevc && get_dbg_flag2(hevc)) {
-		hevc_print(hevc, PRINT_FLAG_VDEC_STATUS, "%s workspace (%x %x) size = %x\n", buf_spec->start_adr, buf_spec->end_adr,
+		hevc_print(hevc, PRINT_FLAG_VDEC_STATUS, "%s workspace (%x %x) size = %x\n", __func__, buf_spec->start_adr, buf_spec->end_adr,
 			   buf_spec->end_adr - buf_spec->start_adr);
 
 		hevc_print(hevc, PRINT_FLAG_VDEC_STATUS, "ipp.buf_start             :%x\n", buf_spec->ipp.buf_start);
