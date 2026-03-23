@@ -933,9 +933,9 @@ struct h264_dpb_stru {
 extern unsigned int h264_debug_flag;
 extern unsigned int h264_debug_mask;
 
-int dpb_print(int indext, int debug_flag, const char *fmt, ...);
+int dpb_print(int indext, int debug_flag, const char *fmt, ...) __printf(3, 4);
 
-int dpb_print_cont(int index, int debug_flag, const char *fmt, ...);
+int dpb_print_cont(int index, int debug_flag, const char *fmt, ...) __printf(3, 4);
 
 unsigned char dpb_is_debug(int index, int debug_flag);
 

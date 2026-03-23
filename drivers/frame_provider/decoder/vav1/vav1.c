@@ -857,7 +857,7 @@ struct AV1HW_s {
 static void av1_dump_state(struct vdec_s *vdec);
 
 int av1_print(struct AV1HW_s *hw,
-	int flag, const char *fmt, ...)
+	int flag, const char *fmt, ...) __printf(3, 4)
 {
 #define HEVC_PRINT_BUF		512
 	unsigned char buf[HEVC_PRINT_BUF];
@@ -886,7 +886,7 @@ unsigned char av1_is_debug(int flag)
 	return 0;
 }
 
-int av1_print2(int flag, const char *fmt, ...)
+int av1_print2(int flag, const char *fmt, ...) __printf(2, 3)
 {
 	unsigned char buf[HEVC_PRINT_BUF];
 	int len = 0;
@@ -11350,4 +11350,3 @@ module_exit(amvdec_av1_driver_remove_module);
 
 MODULE_DESCRIPTION("AMLOGIC av1 Video Decoder Driver");
 MODULE_LICENSE("GPL");
-

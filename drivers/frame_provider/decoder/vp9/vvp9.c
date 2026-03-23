@@ -1257,7 +1257,7 @@ struct VP9Decoder_s {
 };
 
 static int vp9_print(struct VP9Decoder_s *pbi,
-	int flag, const char *fmt, ...)
+	int flag, const char *fmt, ...) __printf(3, 4)
 {
 #define HEVC_PRINT_BUF		512
 	unsigned char buf[HEVC_PRINT_BUF];

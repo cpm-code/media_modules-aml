@@ -211,7 +211,7 @@ u8 *nal_unit_extract_rbsp(const u8 *src, u32 src_len, u32 *dst_len)
 }
 
 //debug
-static void _pr_hex(const char *fmt, ...)
+static void _pr_hex(const char *fmt, ...) __printf(1, 2)
 {
 	u8 buf[512];
 	int len = 0;
@@ -239,4 +239,3 @@ void print_hex_debug(u8 *data, u32 len, int max)
 
 	_pr_hex("print hex ending. len %d\n\n", l);
 }
-

@@ -789,7 +789,7 @@ static int  compute_losless_comp_body_size(
 		uint8_t is_bit_depth_10);
 
 static int avs2_print(struct AVS2Decoder_s *dec,
-	int flag, const char *fmt, ...)
+	int flag, const char *fmt, ...) __printf(3, 4)
 {
 #define HEVC_PRINT_BUF		256
 	unsigned char buf[HEVC_PRINT_BUF];
@@ -809,7 +809,7 @@ static int avs2_print(struct AVS2Decoder_s *dec,
 }
 
 static int avs2_print_cont(struct AVS2Decoder_s *dec,
-	int flag, const char *fmt, ...)
+	int flag, const char *fmt, ...) __printf(3, 4)
 {
 	unsigned char buf[HEVC_PRINT_BUF];
 	int len = 0;

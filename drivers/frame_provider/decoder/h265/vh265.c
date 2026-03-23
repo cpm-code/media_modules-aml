@@ -1757,7 +1757,7 @@ static int compute_losless_comp_header_size(int width, int height)
 	return hsize;
 }
 
-static int add_log(struct hevc_state_s *hevc, const char *fmt, ...)
+static int add_log(struct hevc_state_s *hevc, const char *fmt, ...) __printf(2, 3)
 {
 #define HEVC_LOG_BUF 196
 
