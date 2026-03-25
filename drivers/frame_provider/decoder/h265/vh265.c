@@ -397,6 +397,11 @@ static u32 buffer_mode_dbg = 0xffff0000;
  */
 static u32 nal_skip_policy = 2;
 
+#define PB_SKIP_MODE_FROM_START 0
+#define PB_SKIP_MODE_AFTER_FIRST_I 1
+#define PB_SKIP_MODE_NO_ERROR_OUTPUT 2
+#define PB_SKIP_MODE_AFTER_IRAP 3
+
 /* bit 0: enable CRA-specific suppression of output pictures with error_mark. */
 static u32 cra_recovery_policy = 1;
 
@@ -1800,6 +1805,15 @@ static void dump_log(struct hevc_state_s *hevc)
 static unsigned char is_skip_decoding(struct hevc_state_s *hevc, struct PIC_s *pic)
 {
 	return (pic->error_mark && ((hevc->ignore_bufmgr_error & 0x1) == 0));
+}
+
+static inline bool should_skip_display(struct hevc_state_s *hevc, struct PIC_s *pic)
+{
+	if (!pic || !pic->error_mark)
+		return false;
+
+	return hevc->PB_skip_mode == PB_SKIP_MODE_NO_ERROR_OUTPUT ||
+		((hevc->ignore_bufmgr_error & 0x2) == 0);
 }
 
 static int get_pic_poc(struct hevc_state_s *hevc, unsigned int idx)
@@ -5488,7 +5502,7 @@ static void flush_output(struct hevc_state_s *hevc, struct PIC_s *pic)
 			pic_display->referenced = 0;
 			put_mv_buf(hevc, pic_display);
 
-			if ((pic_display->error_mark && ((hevc->ignore_bufmgr_error & 0x2) == 0)) || (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME) ||
+			if (should_skip_display(hevc, pic_display) || (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME) ||
 			    (get_dbg_flag(hevc) & H265_DEBUG_NO_DISPLAY)) {
 				hevc_cra_recovery_log(hevc, "display_suppress_flush", pic_display, pic_display->pts64);
 				pic_display->output_ready = 0;
@@ -5749,7 +5763,7 @@ static inline void hevc_pre_pic(struct hevc_state_s *hevc, struct PIC_s *pic)
 		do {
 			pic_display = output_pic(hevc, 0);
 			if (pic_display) {
-				if ((pic_display->error_mark && ((hevc->ignore_bufmgr_error & 0x2) == 0)) ||
+				if (should_skip_display(hevc, pic_display) ||
 				    (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME) || (get_dbg_flag(hevc) & H265_DEBUG_NO_DISPLAY)) {
 					hevc_cra_recovery_log(hevc, "display_suppress_pre", pic_display, pic_display->pts64);
 					pic_display->output_ready = 0;
@@ -9485,7 +9499,7 @@ static irqreturn_t vh265_isr_thread_fn(int irq, void *data)
 				pic_display = output_pic(hevc, 1);
 
 				if (pic_display) {
-					if ((pic_display->error_mark && ((hevc->ignore_bufmgr_error & 0x2) == 0)) ||
+					if (should_skip_display(hevc, pic_display) ||
 					    (get_dbg_flag(hevc) & H265_DEBUG_DISPLAY_CUR_FRAME) || (get_dbg_flag(hevc) & H265_DEBUG_NO_DISPLAY)) {
 						pic_display->output_ready = 0;
 						if (get_dbg_flag(hevc) & H265_DEBUG_BUFMGR) {
