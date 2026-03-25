@@ -3970,6 +3970,14 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 		if ((pic->referenced == 0 || pic->POC == cur_poc))
 			continue;
 
+		if (pic->error_mark) {
+			pic->referenced = 0;
+			put_mv_buf(hevc, pic);
+			if (pic_list_debug & 0x2)
+				pr_err("set error poc %d reference to 0\n", pic->POC);
+			continue;
+		}
+
 		is_referenced = 0;
 
 		for (i = 0; i < 16; i++) {
@@ -4028,7 +4036,7 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 
 	for (i = 0; i < MAX_REF_PIC_NUM; i++) {
 		pic = hevc->m_PIC[i];
-		if (!pic || pic->index == -1 || pic->BUF_index == -1 || !pic->referenced)
+		if (!pic || pic->index == -1 || pic->BUF_index == -1 || !pic->referenced || pic->error_mark)
 			continue;
 
 		if (pic_w == pic->width && pic_h == pic->height)
