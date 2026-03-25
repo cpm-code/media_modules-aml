@@ -495,6 +495,9 @@ static unsigned int disp_vframe_valve_level;
 static int pre_decode_buf_level = 0x1000;
 static unsigned int pic_list_debug;
 
+#define PIC_LIST_DEBUG_DUMP 0x1
+#define PIC_LIST_DEBUG_REF_STATUS 0x2
+
 #ifdef HEVC_8K_LFTOFFSET_FIX
 /* performance_profile: bit 0, multi slice in ucode */
 static unsigned int performance_profile = 1;
@@ -2604,6 +2607,14 @@ static bool hevc_pic_matches_current_size(struct hevc_state_s *hevc, struct PIC_
 	return pic->width == hevc->pic_w && pic->height == hevc->pic_h;
 }
 
+static inline bool hevc_should_prefer_candidate_pic(struct PIC_s *candidate, struct PIC_s *selected)
+{
+	if (selected == NULL)
+		return true;
+
+	return candidate->decode_idx > selected->decode_idx;
+}
+
 static struct PIC_s *hevc_find_pic_by_poc(struct hevc_state_s *hevc, int poc, bool referenced_only, bool match_current_size)
 {
 	int i;
@@ -2627,7 +2638,7 @@ static struct PIC_s *hevc_find_pic_by_poc(struct hevc_state_s *hevc, int poc, bo
 		if (pic->POC != poc)
 			continue;
 
-		if (ret_pic == NULL || pic->decode_idx > ret_pic->decode_idx)
+		if (hevc_should_prefer_candidate_pic(pic, ret_pic))
 			ret_pic = pic;
 	}
 
@@ -3955,7 +3966,7 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 	struct PIC_s *pic;
 	unsigned char is_referenced;
 
-	if (pic_list_debug & 0x2)
+	if (pic_list_debug & PIC_LIST_DEBUG_REF_STATUS)
 		pr_err("cur poc %d\n", cur_poc);
 
 	for (ii = 0; ii < MAX_REF_PIC_NUM; ii++) {
@@ -3973,7 +3984,7 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 		if (pic->error_mark) {
 			pic->referenced = 0;
 			put_mv_buf(hevc, pic);
-			if (pic_list_debug & 0x2)
+			if (pic_list_debug & PIC_LIST_DEBUG_REF_STATUS)
 				pr_err("set error poc %d reference to 0\n", pic->POC);
 			continue;
 		}
@@ -4012,7 +4023,7 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 		if (is_referenced == 0) {
 			pic->referenced = 0;
 			put_mv_buf(hevc, pic);
-			if (pic_list_debug & 0x2)
+			if (pic_list_debug & PIC_LIST_DEBUG_REF_STATUS)
 				pr_err("set poc %d reference to 0\n", pic->POC);
 		}
 	}
@@ -4049,7 +4060,7 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 		for (j = 0; j < num_valid_pics; j++) {
 			pic = valid_pics[j];
 			if (pic->POC == poc_target) {
-				if (!cur_pic->ref_pic_l0[i] || pic->decode_idx > cur_pic->ref_pic_l0[i]->decode_idx)
+				if (hevc_should_prefer_candidate_pic(pic, cur_pic->ref_pic_l0[i]))
 					cur_pic->ref_pic_l0[i] = pic;
 			}
 		}
@@ -4064,7 +4075,7 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 		for (j = 0; j < num_valid_pics; j++) {
 			pic = valid_pics[j];
 			if (pic->POC == poc_target) {
-				if (!cur_pic->ref_pic_l1[i] || pic->decode_idx > cur_pic->ref_pic_l1[i]->decode_idx)
+				if (hevc_should_prefer_candidate_pic(pic, cur_pic->ref_pic_l1[i]))
 					cur_pic->ref_pic_l1[i] = pic;
 			}
 		}
@@ -5399,7 +5410,7 @@ static struct PIC_s *get_new_pic(struct hevc_state_s *hevc, union param_u *rpm_p
 		hevc_print(hevc, H265_DEBUG_BUFMGR_MORE, "%s: index %d, buf_idx %d, decode_idx %d, POC %d\n", __func__, new_pic->index, new_pic->BUF_index,
 			   new_pic->decode_idx, new_pic->POC);
 	}
-	if (pic_list_debug & 0x1) {
+	if (pic_list_debug & PIC_LIST_DEBUG_DUMP) {
 		dump_pic_list(hevc);
 		pr_err("\n*******************************************\n");
 	}
