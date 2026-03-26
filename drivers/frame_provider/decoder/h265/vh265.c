@@ -4413,10 +4413,7 @@ static int get_tile_index(struct hevc_state_s *hevc, int cu_adr, int pic_width_l
 
 static void print_scratch_error(int error_num)
 {
-#if 0
-	if (dbg_flag)
-		hevc_print(hevc, 0, " ERROR : HEVC_ASSIST_SCRATCH_TEST Error : %d\n", error_num);
-#endif
+	pr_debug("h265: HEVC_ASSIST_SCRATCH_TEST error %d\n", error_num);
 }
 
 static void hevc_config_work_space_hw(struct hevc_state_s *hevc)
