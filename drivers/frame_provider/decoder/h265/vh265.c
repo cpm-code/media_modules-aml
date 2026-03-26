@@ -2655,6 +2655,40 @@ static struct PIC_s *get_ref_pic_by_POC(struct hevc_state_s *hevc, int POC)
 	return hevc_find_pic_by_poc(hevc, POC, true, true);
 }
 
+static struct PIC_s *hevc_find_best_ref_pic(struct PIC_s **valid_pics, int num_valid_pics, int poc)
+{
+	int valid_pic_idx;
+	struct PIC_s *pic;
+	struct PIC_s *selected = NULL;
+
+	for (valid_pic_idx = 0; valid_pic_idx < num_valid_pics; valid_pic_idx++) {
+		pic = valid_pics[valid_pic_idx];
+		if (pic->POC != poc) continue;
+
+		if (hevc_should_prefer_candidate_pic(pic, selected))
+			selected = pic;
+	}
+
+	return selected;
+}
+
+static u32 hevc_resolve_ref_list(struct PIC_s **ref_pic_list, const int *ref_poc_list, int ref_num, struct PIC_s **valid_pics, int num_valid_pics,
+			 int longterm_ref_shift)
+{
+	int i;
+	u32 longterm_ref_mask = 0;
+
+	memset(ref_pic_list, 0, sizeof(struct PIC_s *) * MAX_REF_ACTIVE);
+
+	for (i = 0; i < ref_num; i++) {
+		ref_pic_list[i] = hevc_find_best_ref_pic(valid_pics, num_valid_pics, ref_poc_list[i]);
+		if (ref_pic_list[i] && ref_pic_list[i]->long_term_ref)
+			longterm_ref_mask |= (1U << (i + longterm_ref_shift));
+	}
+
+	return longterm_ref_mask;
+}
+
 static unsigned int log2i(unsigned int val)
 {
 	unsigned int ret = -1;
