@@ -4909,13 +4909,7 @@ static void config_mpred_hw(struct hevc_state_s *hevc)
 	data32 &= ~(1 << 28);
 	WRITE_VREG(HEVC_MPRED_CTRL0, data32);
 
-	data32 = (
-#if 0
-			/* no set in m8baby test1902 */
-			/* Don't override clk_forced_on , */
-			(data32 & (0x1 << 24)) |
-#endif
-		hevc->MaxNumMergeCand | AMVP_MAX_NUM_CANDS << 4 | AMVP_MAX_NUM_CANDS_MEM << 8 | NUM_CHROMA_MODE << 12 | DM_CHROMA_IDX << 16);
+	data32 = hevc->MaxNumMergeCand | AMVP_MAX_NUM_CANDS << 4 | AMVP_MAX_NUM_CANDS_MEM << 8 | NUM_CHROMA_MODE << 12 | DM_CHROMA_IDX << 16;
 	WRITE_VREG(HEVC_MPRED_CTRL1, data32);
 
 	data32 = (hevc->pic_w | hevc->pic_h << 16);
