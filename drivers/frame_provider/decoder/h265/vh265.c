@@ -4999,6 +4999,7 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 	unsigned int data32, data32_2;
 	int misc_flag0 = hevc->misc_flag0;
 	int slice_deblocking_filter_disabled_flag = 0;
+	int double_write_mode = get_double_write_mode(hevc);
 
 	int mc_buffer_size_u_v = hevc->lcu_total * hevc->lcu_size * hevc->lcu_size / 2;
 	int mc_buffer_size_u_v_h = (mc_buffer_size_u_v + 0xffff) >> 16;
@@ -5019,13 +5020,13 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 	if (hevc->new_pic)
 		WRITE_VREG(HEVC_SAO_Y_START_ADDR, 0xffffffff);
 	/*SUPPORT_10BIT*/
-	if ((get_double_write_mode(hevc) & 0x10) == 0) {
+	if ((double_write_mode & 0x10) == 0) {
 		data32 = READ_VREG(HEVC_SAO_CTRL5);
 		data32 &= (~(0xff << 16));
 
-		if (get_double_write_mode(hevc) == 2 || get_double_write_mode(hevc) == 3)
+		if (double_write_mode == 2 || double_write_mode == 3)
 			data32 |= (0xff << 16);
-		else if (get_double_write_mode(hevc) == 4 || get_double_write_mode(hevc) == 5)
+		else if (double_write_mode == 4 || double_write_mode == 5)
 			data32 |= (0x33 << 16);
 
 		if (hevc->mem_saving_mode == 1)
@@ -5037,10 +5038,10 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 		WRITE_VREG(HEVC_SAO_CTRL5, data32);
 	}
 	data32 = cur_pic->mc_y_adr;
-	if (get_double_write_mode(hevc))
+	if (double_write_mode)
 		WRITE_VREG(HEVC_SAO_Y_START_ADDR, cur_pic->dw_y_adr);
 
-	if ((get_double_write_mode(hevc) & 0x10) == 0)
+	if ((double_write_mode & 0x10) == 0)
 		WRITE_VREG(HEVC_CM_BODY_START_ADDR, data32);
 
 	if (hevc->mmu_enable)
@@ -5049,13 +5050,13 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 	WRITE_VREG(HEVC_SAO_Y_LENGTH, data32);
 
 	/*SUPPORT_10BIT*/
-	if (get_double_write_mode(hevc))
+	if (double_write_mode)
 		WRITE_VREG(HEVC_SAO_C_START_ADDR, cur_pic->dw_u_v_adr);
 	data32 = (mc_buffer_size_u_v_h << 16);
 	WRITE_VREG(HEVC_SAO_C_LENGTH, data32);
 
 	/*SUPPORT_10BIT*/
-	if (get_double_write_mode(hevc)) {
+	if (double_write_mode) {
 		WRITE_VREG(HEVC_SAO_Y_WPTR, cur_pic->dw_y_adr);
 		WRITE_VREG(HEVC_SAO_C_WPTR, cur_pic->dw_u_v_adr);
 	}
@@ -5072,9 +5073,9 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 				data32 |= (0x1 << 4); /*dblk pipeline mode=1 for performance*/
 			data32 &= (~0x300);	      /*[8]:first write enable (compress)  [9]:double write
 							 enable (uncompress)*/
-			if (get_double_write_mode(hevc) == 0)
+			if (double_write_mode == 0)
 				data32 |= (0x1 << 8); /*enable first write*/
-			else if (get_double_write_mode(hevc) == 0x10)
+			else if (double_write_mode == 0x10)
 				data32 |= (0x1 << 9); /*double write only*/
 			else
 				data32 |= ((0x1 << 8) | (0x1 << 9));
@@ -5135,9 +5136,9 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 	/* data32 |= 0x670;  // Big-Endian per 64-bit */
 	data32 |= ((hevc->endian >> 8) & 0xff0); /* Big-Endian per 64-bit */
 	data32 &= (~0x3);			 /*[1]:dw_disable [0]:cm_disable*/
-	if (get_double_write_mode(hevc) == 0)
+	if (double_write_mode == 0)
 		data32 |= 0x2; /*disable double write*/
-	else if (get_double_write_mode(hevc) & 0x10)
+	else if (double_write_mode & 0x10)
 		data32 |= 0x1; /*disable cm*/
 	if (vh265_cpu_id >= AM_MESON_CPU_MAJOR_ID_G12A) {
 		unsigned int data;
@@ -5147,9 +5148,9 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 			data |= (0x1 << 4); /*dblk pipeline mode=1 for performance*/
 		data &= (~0x300);	    /*[8]:first write enable (compress)  [9]:double write enable
 					       (uncompress)*/
-		if (get_double_write_mode(hevc) == 0)
+		if (double_write_mode == 0)
 			data |= (0x1 << 8); /*enable first write*/
-		else if (get_double_write_mode(hevc) & 0x10)
+		else if (double_write_mode & 0x10)
 			data |= (0x1 << 9); /*double write only*/
 		else
 			data |= ((0x1 << 8) | (0x1 << 9));
@@ -5180,7 +5181,7 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 
 	WRITE_VREG(HEVC_SAO_CTRL1, data32);
 
-	if (get_double_write_mode(hevc) & 0x10) {
+	if (double_write_mode & 0x10) {
 		/* [23:22] dw_v1_ctrl
 		 * [21:20] dw_v0_ctrl
 		 * [19:18] dw_h1_ctrl
