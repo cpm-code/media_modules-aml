@@ -5103,27 +5103,6 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 			/*}*/
 		}
 	}
-#if 0
-	data32 = READ_VREG(HEVC_SAO_CTRL1);
-	data32 &= (~0x3000);
-	data32 |= (hevc->mem_map_mode <<
-			12);
-
-/*  [13:12] axi_aformat,
- *			       0-Linear, 1-32x32, 2-64x32
- */
-	WRITE_VREG(HEVC_SAO_CTRL1, data32);
-
-	data32 = READ_VREG(HEVCD_IPP_AXIIF_CONFIG);
-	data32 &= (~0x30);
-	data32 |= (hevc->mem_map_mode <<
-			   4);
-
-/*  [5:4]    -- address_format
- *				00:linear 01:32x32 10:64x32
- */
-	WRITE_VREG(HEVCD_IPP_AXIIF_CONFIG, data32);
-#else
 	/* m8baby test1902 */
 	data32 = READ_VREG(HEVC_SAO_CTRL1);
 	data32 &= (~0x3000);
@@ -5218,7 +5197,6 @@ static void config_sao_hw(struct hevc_state_s *hevc, union param_u *params)
 	 * [31:13] reserved
 	 */
 	WRITE_VREG(HEVCD_IPP_AXIIF_CONFIG, data32);
-#endif
 
 	data32 = 0;
 	data32_2 = READ_VREG(HEVC_SAO_CTRL0);
