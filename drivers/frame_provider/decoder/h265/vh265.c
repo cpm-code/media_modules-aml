@@ -10547,10 +10547,10 @@ static int vh265_local_init(struct hevc_state_s *hevc)
 		return ret;
 	}
 
-	if (hevc->max_pic_w && hevc->max_pic_h)
-		hevc->is_4k = !(hevc->max_pic_w && hevc->max_pic_h) || ((hevc->max_pic_w * hevc->max_pic_h) > 1920 * 1088) ? true : false;
-	else
+	if (!(hevc->max_pic_w && hevc->max_pic_h))
 		hevc->is_4k = !(hevc->frame_width && hevc->frame_height) || ((hevc->frame_width * hevc->frame_height) > 1920 * 1088) ? true : false;
+	else
+		hevc->is_4k = (hevc->max_pic_w * hevc->max_pic_h) > 1920 * 1088;
 
 	hevc->frame_dur = (hevc->vh265_amstream_dec_info.rate == 0) ? 3600 : hevc->vh265_amstream_dec_info.rate;
 
@@ -10571,10 +10571,6 @@ static int vh265_local_init(struct hevc_state_s *hevc)
 		pts_unstable = ((unsigned long)vdec->sys_info->param & 0x40) >> 6;
 
 	hevc_print(hevc, 0, "h265:pts_unstable=%d\n", pts_unstable);
-
-	/*
-	 *TODO:FOR VERSION
-	 */
 
 	hevc_print(hevc, 0, "h265: ver (%d,%d) decinfo: %dx%d rate=%d\n", h265_version, 0, hevc->frame_width, hevc->frame_height, hevc->frame_dur);
 
