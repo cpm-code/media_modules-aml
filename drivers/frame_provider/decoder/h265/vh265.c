@@ -4482,16 +4482,7 @@ static void hevc_init_decoder_hw(struct hevc_state_s *hevc, int decode_pic_begin
 	unsigned int data32;
 	int dbg_flag = get_dbg_flag(hevc);
 
-#if 0
-	if (vh265_cpu_id >= MESON_CPU_MAJOR_ID_G12A)
-	{
-		/* Set MCR fetch priorities*/
-		data32 = 0x1 | (0x1 << 2) | (0x1 <<3) | (24 << 4) | (32 << 11) | (24 << 18) | (32 << 25);
-		WRITE_VREG(HEVCD_MPP_DECOMP_AXIURG_CTL, data32);
-	}
-#endif
 
-#if 1
 	/* m8baby test1902 */
 	if (dbg_flag & H265_DEBUG_BUFMGR)
 		hevc_print(hevc, 0, "%s\n", __func__);
@@ -4507,24 +4498,11 @@ static void hevc_init_decoder_hw(struct hevc_state_s *hevc, int decode_pic_begin
 		print_scratch_error(26);
 		return;
 	}
-#if 0
-	/* test Parser Reset */
-	/* reset iqit to start mem init again */
-	WRITE_VREG(DOS_SW_RESET3, (1 << 14) |
-			   (1 << 3)	/* reset_whole parser */
-			  );
-	WRITE_VREG(DOS_SW_RESET3, 0);	/* clear reset_whole parser */
-	data32 = READ_VREG(HEVC_PARSER_VERSION);
-	if (data32 != 0x00010001)
-		hevc_print(hevc, 0,
-		"Test Parser Fatal Error\n");
-#endif
+
 	/* reset iqit to start mem init again */
 	WRITE_VREG(DOS_SW_RESET3, (1 << 14));
 	CLEAR_VREG_MASK(HEVC_CABAC_CONTROL, 1);
 	CLEAR_VREG_MASK(HEVC_PARSER_CORE_CONTROL, 1);
-
-#endif
 	if (!hevc->m_ins_flag) {
 		data32 = READ_VREG(HEVC_STREAM_CONTROL);
 		data32 = data32 | (1 << 0); /* stream_fetch_enable */
