@@ -4065,19 +4065,13 @@ static void apply_ref_pic_set(struct hevc_state_s *hevc, int cur_poc, union para
 
 static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pic)
 {
-	int i, j;
+	int i;
 	int slice_idx = cur_pic->slice_idx;
 	int pic_w = hevc->pic_w;
 	int pic_h = hevc->pic_h;
 	struct PIC_s *pic;
 	struct PIC_s *valid_pics[MAX_REF_PIC_NUM];
 	int num_valid_pics = 0;
-	u32 longterm_ref_mask = 0;
-
-	for (i = 0; i < MAX_REF_ACTIVE; i++) {
-		cur_pic->ref_pic_l0[i] = NULL;
-		cur_pic->ref_pic_l1[i] = NULL;
-	}
 
 	for (i = 0; i < MAX_REF_PIC_NUM; i++) {
 		pic = hevc->m_PIC[i];
@@ -4088,37 +4082,10 @@ static void resolve_ref_pic_list(struct hevc_state_s *hevc, struct PIC_s *cur_pi
 			valid_pics[num_valid_pics++] = pic;
 	}
 
-	for (i = 0; i < cur_pic->RefNum_L0; i++) {
-		int poc_target = cur_pic->m_aiRefPOCList0[slice_idx][i];
-
-		for (j = 0; j < num_valid_pics; j++) {
-			pic = valid_pics[j];
-			if (pic->POC == poc_target) {
-				if (hevc_should_prefer_candidate_pic(pic, cur_pic->ref_pic_l0[i]))
-					cur_pic->ref_pic_l0[i] = pic;
-			}
-		}
-
-		if (cur_pic->ref_pic_l0[i] && cur_pic->ref_pic_l0[i]->long_term_ref)
-			longterm_ref_mask |= (1U << i);
-	}
-
-	for (i = 0; i < cur_pic->RefNum_L1; i++) {
-		int poc_target = cur_pic->m_aiRefPOCList1[slice_idx][i];
-
-		for (j = 0; j < num_valid_pics; j++) {
-			pic = valid_pics[j];
-			if (pic->POC == poc_target) {
-				if (hevc_should_prefer_candidate_pic(pic, cur_pic->ref_pic_l1[i]))
-					cur_pic->ref_pic_l1[i] = pic;
-			}
-		}
-
-		if (cur_pic->ref_pic_l1[i] && cur_pic->ref_pic_l1[i]->long_term_ref)
-			longterm_ref_mask |= (1U << (i + 16));
-	}
-
-	cur_pic->longterm_ref_mask = longterm_ref_mask;
+	cur_pic->longterm_ref_mask = hevc_resolve_ref_list(cur_pic->ref_pic_l0, cur_pic->m_aiRefPOCList0[slice_idx], cur_pic->RefNum_L0, valid_pics,
+	                                                   num_valid_pics, 0);
+	cur_pic->longterm_ref_mask |= hevc_resolve_ref_list(cur_pic->ref_pic_l1, cur_pic->m_aiRefPOCList1[slice_idx], cur_pic->RefNum_L1, valid_pics,
+	                                                    num_valid_pics, 16);
 }
 
 static void set_ref_pic_list(struct hevc_state_s *hevc, union param_u *params)
