@@ -65,17 +65,21 @@ struct vdec_v4l2_buffer {
 	u32	buf_idx;
 };
 
+enum aml_capture_buf_state {
+	AML_CAPTURE_BUF_FREE = 0,
+	AML_CAPTURE_BUF_QUEUED_VB2,
+	AML_CAPTURE_BUF_DECODER_OWNED,
+	AML_CAPTURE_BUF_DISPLAY_READY,
+	AML_CAPTURE_BUF_QUEUED_V4L2,
+};
+
 
 /**
  * struct aml_video_dec_buf - Private data related to each VB2 buffer.
  * @b:		VB2 buffer
  * @list:	link list
- * @used:	Capture buffer contain decoded frame data and keep in
- *			codec data structure
- * @ready_to_display:	Capture buffer not display yet
- * @queued_in_vb2:	Capture buffer is queue in vb2
- * @queued_in_v4l2:	Capture buffer is in v4l2 driver, but not in vb2
- *			queue yet
+ * @used:	General ownership marker, also used by source-buffer flow
+ * @state:	Capture buffer lifecycle state within the decoder bridge
  * @lastframe:		Intput buffer is last buffer - EOS
  * @error:		An unrecoverable error occurs on this buffer.
  * @frame_buffer:	Decode status, and buffer information of Capture buffer
@@ -91,10 +95,7 @@ struct aml_video_dec_buf {
 	struct codec_mm_s *mem[AML_VCODEC_MAX_PLANES];
 	char mem_onwer[32];
 	bool used;
-	bool ready_to_display;
-	bool que_in_m2m;
-	bool queued_in_vb2;
-	bool queued_in_v4l2;
+	enum aml_capture_buf_state state;
 	bool lastframe;
 	bool error;
 };

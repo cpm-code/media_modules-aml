@@ -130,6 +130,88 @@ static struct aml_video_fmt aml_video_formats[] = {
 	},
 };
 
+static const char *aml_capture_buf_state_name(
+	const struct aml_video_dec_buf *buf)
+{
+	switch (buf->state) {
+	case AML_CAPTURE_BUF_DECODER_OWNED:
+		return "decoder";
+	case AML_CAPTURE_BUF_DISPLAY_READY:
+		return "display-ready";
+	case AML_CAPTURE_BUF_QUEUED_VB2:
+		return "queued-vb2";
+	case AML_CAPTURE_BUF_QUEUED_V4L2:
+		return "queued-v4l2";
+	case AML_CAPTURE_BUF_FREE:
+	default:
+		return "free";
+	}
+}
+
+static bool aml_capture_buf_is_decoder_owned(
+	const struct aml_video_dec_buf *buf)
+{
+	return buf->state == AML_CAPTURE_BUF_DECODER_OWNED;
+}
+
+static bool aml_capture_buf_is_display_ready(
+	const struct aml_video_dec_buf *buf)
+{
+	return buf->state == AML_CAPTURE_BUF_DISPLAY_READY;
+}
+
+static bool aml_capture_buf_is_queued_vb2(
+	const struct aml_video_dec_buf *buf)
+{
+	return buf->state == AML_CAPTURE_BUF_QUEUED_VB2;
+}
+
+static bool aml_capture_buf_is_free(const struct aml_video_dec_buf *buf)
+{
+	return buf->state == AML_CAPTURE_BUF_FREE;
+}
+
+static void aml_capture_buf_reset(struct aml_video_dec_buf *buf)
+{
+	buf->used = false;
+	buf->state = AML_CAPTURE_BUF_FREE;
+	buf->frame_buffer.status = FB_ST_NORMAL;
+	buf->vb.flags = 0;
+}
+
+static void aml_capture_buf_mark_driver_queued(
+	struct aml_video_dec_buf *buf, bool queued_in_vb2)
+{
+	buf->used = false;
+	buf->state = queued_in_vb2 ? AML_CAPTURE_BUF_QUEUED_VB2 :
+		AML_CAPTURE_BUF_QUEUED_V4L2;
+}
+
+static void aml_capture_buf_mark_decoder_owned(
+	struct aml_vcodec_ctx *ctx, struct aml_video_dec_buf *buf)
+{
+	buf->used = true;
+	buf->state = AML_CAPTURE_BUF_DECODER_OWNED;
+	ctx->buf_used_count++;
+}
+
+static void aml_capture_buf_mark_display_ready(struct aml_video_dec_buf *buf)
+{
+	buf->state = AML_CAPTURE_BUF_DISPLAY_READY;
+}
+
+static void aml_capture_buf_release_decoder_ownership(
+	struct aml_vcodec_ctx *ctx, struct aml_video_dec_buf *buf)
+{
+	if (!aml_capture_buf_is_decoder_owned(buf))
+		return;
+
+	if (ctx->buf_used_count > 0)
+		ctx->buf_used_count--;
+	buf->used = false;
+	buf->state = AML_CAPTURE_BUF_QUEUED_VB2;
+}
+
 static const struct aml_codec_framesizes aml_vdec_framesizes[] = {
 	{
 		.fourcc	= V4L2_PIX_FMT_H264,
@@ -471,8 +553,7 @@ int get_fb_from_queue(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffer **out_
 			pfb->m.mem[2].addr, pfb->m.mem[2].size);
 	}
 
-	dst_buf_info->used = true;
-	ctx->buf_used_count++;
+	aml_capture_buf_mark_decoder_owned(ctx, dst_buf_info);
 
 	*out_fb = pfb;
 
@@ -505,7 +586,7 @@ int put_fb_to_queue(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffer *in_fb)
 
 	mutex_lock(&ctx->lock);
 
-	if (!dstbuf->used)
+	if (!aml_capture_buf_is_decoder_owned(dstbuf))
 		goto out;
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
@@ -514,9 +595,7 @@ int put_fb_to_queue(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffer *in_fb)
 
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, &dstbuf->vb);
 
-	if (ctx->buf_used_count > 0)
-		ctx->buf_used_count--;
-	dstbuf->used = false;
+	aml_capture_buf_release_decoder_ownership(ctx, dstbuf);
 out:
 	mutex_unlock(&ctx->lock);
 
@@ -564,7 +643,7 @@ void trans_vframe_to_user(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffer *f
 		vb2_set_plane_payload(&dstbuf->vb.vb2_buf, 2, fb->m.mem[2].bytes_used);
 	}
 	dstbuf->vb.vb2_buf.timestamp = vf->timestamp;
-	dstbuf->ready_to_display = true;
+	aml_capture_buf_mark_display_ready(dstbuf);
 
 	if (dump_capture_frame) {
 		struct file *fp;
@@ -2107,9 +2186,10 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	buf = container_of(vb2_v4l2, struct aml_video_dec_buf, vb);
 
 	v4l_dbg(ctx, V4L_DEBUG_CODEC_PROT,
-		"%s, vb: %lx, type: %d, idx: %d, state: %d, used: %d, ts: %llu\n",
+		"%s, vb: %lx, type: %d, idx: %d, state: %d, cap-state: %s, ts: %llu\n",
 		__func__, (ulong) vb, vb->vb2_queue->type,
-		vb->index, vb->state, buf->used, vb->timestamp);
+		vb->index, vb->state, aml_capture_buf_state_name(buf),
+		vb->timestamp);
 	/*
 	 * check if this buffer is ready to be used after decode
 	 */
@@ -2127,26 +2207,22 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 			buf->frame_buffer.vf_handle,
 			buf->frame_buffer.status);
 
-		if (!buf->que_in_m2m) {
+		if (aml_capture_buf_is_free(buf)) {
 			v4l_dbg(ctx, V4L_DEBUG_CODEC_BUFMGR,
 				"enque capture buf idx %d, vf: %lx\n",
 				vb->index, (ulong) v4l_get_vf_handle(vb2_v4l2->private));
 
 			v4l2_m2m_buf_queue(ctx->m2m_ctx, vb2_v4l2);
-			buf->que_in_m2m = true;
-			buf->queued_in_vb2 = true;
-			buf->queued_in_v4l2 = true;
-			buf->ready_to_display = false;
+			aml_capture_buf_mark_driver_queued(buf, true);
 			ctx->cap_pool.seq[ctx->cap_pool.in % V4L_CAP_BUFF_MAX] =
 				(V4L_CAP_BUFF_IN_M2M << 16 | vb->index);
 			ctx->cap_pool.in++;
 
 			/* check dpb ready */
 			aml_check_dpb_ready(ctx);
-		} else if (buf->frame_buffer.status == FB_ST_DISPLAY) {
-			buf->queued_in_vb2 = false;
-			buf->queued_in_v4l2 = true;
-			buf->ready_to_display = false;
+		} else if (buf->frame_buffer.status == FB_ST_DISPLAY &&
+			   aml_capture_buf_is_display_ready(buf)) {
+			aml_capture_buf_mark_driver_queued(buf, false);
 
 			/* recycle vf */
 			video_vf_put(ctx->ada_ctx->recv_name,
@@ -2242,8 +2318,10 @@ static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 	buf = container_of(vb2_v4l2, struct aml_video_dec_buf, vb);
 
 	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type)) {
-		buf->queued_in_v4l2 = false;
-		buf->queued_in_vb2 = false;
+		if (aml_capture_buf_is_queued_vb2(buf))
+			buf->state = AML_CAPTURE_BUF_FREE;
+		if (aml_capture_buf_is_free(buf))
+			buf->frame_buffer.status = FB_ST_NORMAL;
 	}
 	buf_error = buf->error;
 
@@ -2278,10 +2356,7 @@ static int vb2ops_vdec_buf_init(struct vb2_buffer *vb)
 		buf->mem[plane] = NULL;
 
 	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type)) {
-		buf->used = false;
-		buf->ready_to_display = false;
-		buf->queued_in_v4l2 = false;
-		buf->frame_buffer.status = FB_ST_NORMAL;
+		aml_capture_buf_reset(buf);
 	} else {
 		buf->lastframe = false;
 	}
@@ -2419,13 +2494,7 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 		for (i = 0; i < q->num_buffers; ++i) {
 			vb2_v4l2 = to_vb2_v4l2_buffer(q->bufs[i]);
 			buf = container_of(vb2_v4l2, struct aml_video_dec_buf, vb);
-			buf->used = false;
-			buf->ready_to_display = false;
-			buf->queued_in_vb2 = false;
-			buf->queued_in_v4l2 = false;
-			buf->frame_buffer.status = FB_ST_NORMAL;
-			buf->que_in_m2m = false;
-			buf->vb.flags = 0;
+			aml_capture_buf_reset(buf);
 			ctx->cap_pool.seq[i] = 0;
 
 			if (vb2_v4l2->vb2_buf.state == VB2_BUF_STATE_ACTIVE)
