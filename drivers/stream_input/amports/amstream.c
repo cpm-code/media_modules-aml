@@ -1222,10 +1222,17 @@ static ssize_t amstream_vframe_write(struct file *file, const char *buf,
 			break;/*alway return for no block mode.*/
 		} else if (ret == -EAGAIN) {
 			int level;
+			unsigned int delay_min = 1000;
+			unsigned int delay_max = 2000;
+
 			level = vdec_input_level(&priv->vdec->input);
 			if (wait_max_cnt-- < 0)
 				break;
-			msleep(20);
+			if (level > 0) {
+				delay_min = 2000;
+				delay_max = 4000;
+			}
+			usleep_range(delay_min, delay_max);
 		}
 	} while (ret == -EAGAIN);
 	return ret;

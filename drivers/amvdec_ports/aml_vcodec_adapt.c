@@ -557,7 +557,7 @@ int vdec_vbuf_write(struct aml_vdec_adapt *ada_ctx,
 			ret = esparser_write(ada_ctx->filp, pbuf, buf, count);
 
 		if (ret == -EAGAIN)
-			msleep(30);
+			usleep_range(2000, 4000);
 	} while (ret == -EAGAIN && try_cnt--);
 
 	if (slow_input) {
@@ -596,7 +596,7 @@ int vdec_vframe_write(struct aml_vdec_adapt *ada_ctx,
 	if (slow_input) {
 		v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_PRINFO,
 			"slow_input: frame codec write size %d\n", ret);
-		msleep(30);
+		usleep_range(5000, 7000);
 	}
 
 	if (dump_output_frame > 0) {
@@ -634,7 +634,7 @@ int vdec_vframe_write_with_dma(struct aml_vdec_adapt *ada_ctx,
 	if (slow_input) {
 		v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_PRINFO,
 			"slow_input: frame codec write size %d\n", ret);
-		msleep(30);
+		usleep_range(5000, 7000);
 	}
 
 	v4l_dbg(ada_ctx->ctx, V4L_DEBUG_CODEC_INPUT,

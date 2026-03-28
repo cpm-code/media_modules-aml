@@ -40,6 +40,7 @@
 #define BUF_NAME "fetchbuf"
 
 #define DEFAULT_BLOCK_SIZE (64*1024)
+#define THREADRW_RETRY_DELAY msecs_to_jiffies(10)
 
 struct threadrw_buf {
 	void *vbuffer;
@@ -95,21 +96,13 @@ static int threadrw_schedule_delayed_work(
 		struct threadrw_write_task *task,
 		unsigned long delay)
 {
-	bool ret;
+	struct workqueue_struct *wq = threadrw_wq_get();
 
-	if (threadrw_wq_get()) {
-		ret = queue_delayed_work(threadrw_wq_get(),
-			&task->write_work, delay);
-	} else
-		ret = schedule_delayed_work(&task->write_work, delay);
-	if (!ret) {
-		cancel_delayed_work(&task->write_work);
-		if (threadrw_wq_get())
-			ret = queue_delayed_work(threadrw_wq_get(),
-					&task->write_work, 0);
-		else
-			ret = schedule_delayed_work(&task->write_work, 0);
-	}
+	if (wq)
+		mod_delayed_work(wq, &task->write_work, delay);
+	else
+		mod_delayed_work(system_wq, &task->write_work, delay);
+
 	return 0;
 }
 
@@ -131,7 +124,7 @@ static ssize_t threadrw_write_onece(
 
 	to_write = min_t(u32, rwbuf->buffer_size, count);
 	if (copy_from_user(rwbuf->vbuffer, buf, to_write)) {
-		kfifo_put(&task->freefifo, (const void *)buf);
+		kfifo_put(&task->freefifo, (const void *)rwbuf);
 		ret = -EFAULT;
 		goto err;
 	}
@@ -172,9 +165,10 @@ static ssize_t threadrw_write_in(
 					(++wait_num < 10)) {
 					wait_event_interruptible_timeout(
 						task->wq,
+						task->errors ||
 						!kfifo_is_empty(
 							&task->freefifo),
-						HZ / 100);
+						THREADRW_RETRY_DELAY);
 					continue;	/* write again. */
 				}
 				ret = -EAGAIN;
@@ -254,6 +248,7 @@ static int do_write_work_in(struct threadrw_write_task *task)
 		pr_err("get errors ret=%d size=%d\n", ret,
 			rwbuf->data_size);
 		task->errors = ret;
+		wake_up_interruptible(&task->wq);
 	}
 	if (write_len > 0) {
 		spin_lock_irqsave(&task->lock, flags);
@@ -270,14 +265,17 @@ static void do_write_work(struct work_struct *work)
 					struct threadrw_write_task,
 					write_work.work);
 	int need_retry = 1;
+	bool retry_later = false;
 
 	task->writework_on = 1;
 	while (need_retry) {
 		mutex_lock(&task->mutex);
 		need_retry = do_write_work_in(task);
+		retry_later = !task->errors && !kfifo_is_empty(&task->datafifo);
 		mutex_unlock(&task->mutex);
 	}
-	threadrw_schedule_delayed_work(task, HZ / 10);
+	if (retry_later)
+		threadrw_schedule_delayed_work(task, THREADRW_RETRY_DELAY);
 	task->writework_on = 0;
 }
 
