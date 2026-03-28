@@ -450,6 +450,7 @@ struct aml_vcodec_ctx {
 	struct mutex			lock, state_lock;
 	enum aml_instance_state		state;
 	struct work_struct		decode_work;
+	struct delayed_work		decode_retry_work;
 	bool				output_thread_ready;
 	struct v4l_buff_pool		cap_pool;
 	struct list_head		vdec_thread_list;
@@ -474,9 +475,11 @@ struct aml_vcodec_ctx {
 	bool				is_stream_off;
 	bool				is_out_stream_off;
 	bool				receive_cmd_stop;
+	bool				decode_retry_pending;
 	int				reset_flag;
 	int				decoded_frame_cnt;
 	int				buf_used_count;
+	u32				decode_retry_delay_us;
 };
 
 /**

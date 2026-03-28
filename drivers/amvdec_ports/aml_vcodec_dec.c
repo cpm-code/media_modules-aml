@@ -53,6 +53,8 @@
 
 #define WORK_ITEMS_MAX (32)
 #define AML_WAIT_TIMEOUT_MS AML_VCODEC_WAIT_TIMEOUT_MS
+#define AML_DECODE_RETRY_DELAY_MIN_US 1000U
+#define AML_DECODE_RETRY_DELAY_MAX_US 8000U
 
 //#define USEC_PER_SEC 1000000
 
@@ -210,6 +212,52 @@ static void aml_capture_buf_release_decoder_ownership(
 		ctx->buf_used_count--;
 	buf->used = false;
 	buf->state = AML_CAPTURE_BUF_QUEUED_VB2;
+}
+
+static void aml_vdec_reset_retry_backoff(struct aml_vcodec_ctx *ctx)
+{
+	ctx->decode_retry_delay_us = AML_DECODE_RETRY_DELAY_MIN_US;
+	WRITE_ONCE(ctx->decode_retry_pending, false);
+}
+
+static u32 aml_vdec_next_retry_delay_us(struct aml_vcodec_ctx *ctx)
+{
+	u32 delay = ctx->decode_retry_delay_us;
+
+	if (!delay)
+		delay = AML_DECODE_RETRY_DELAY_MIN_US;
+
+	ctx->decode_retry_delay_us = min(delay << 1,
+		AML_DECODE_RETRY_DELAY_MAX_US);
+
+	return delay;
+}
+
+static void aml_vdec_retry_work(struct work_struct *work)
+{
+	struct aml_vcodec_ctx *ctx = container_of(to_delayed_work(work),
+		struct aml_vcodec_ctx, decode_retry_work);
+
+	WRITE_ONCE(ctx->decode_retry_pending, false);
+
+	if (!ctx->output_thread_ready)
+		return;
+
+	if (ctx->state < AML_STATE_PROBE || ctx->state > AML_STATE_FLUSHED)
+		return;
+
+	v4l2_m2m_try_schedule(ctx->m2m_ctx);
+}
+
+static void aml_vdec_schedule_retry(struct aml_vcodec_ctx *ctx)
+{
+	unsigned long delay_jiffies;
+	u32 delay_us = aml_vdec_next_retry_delay_us(ctx);
+
+	delay_jiffies = max_t(unsigned long, 1, usecs_to_jiffies(delay_us));
+	WRITE_ONCE(ctx->decode_retry_pending, true);
+	mod_delayed_work(ctx->dev->decode_workqueue,
+		&ctx->decode_retry_work, delay_jiffies);
 }
 
 static const struct aml_codec_framesizes aml_vdec_framesizes[] = {
@@ -965,6 +1013,7 @@ static void aml_vdec_worker(struct work_struct *work)
 
 	ret = vdec_if_decode(ctx, &buf, &res_chg);
 	if (ret > 0) {
+		aml_vdec_reset_retry_backoff(ctx);
 		/*
 		 * we only return src buffer with VB2_BUF_STATE_DONE
 		 * when decode success without resolution change.
@@ -982,6 +1031,7 @@ static void aml_vdec_worker(struct work_struct *work)
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 			"error processing src data. %d.\n", ret);
 	} else if (res_chg) {
+		aml_vdec_reset_retry_backoff(ctx);
 		/* wait the DPB state to be ready. */
 		if (!aml_vcodec_wait_dpb_ready(ctx)) {
 			v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
@@ -1012,8 +1062,11 @@ static void aml_vdec_worker(struct work_struct *work)
 
 		goto out;
 	} else {
-		/* decoder is lack of resource, retry after short delay */
-		usleep_range(50000, 55000);
+		v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
+			"decode input full, retry in %u us\n",
+			ctx->decode_retry_delay_us ?
+			ctx->decode_retry_delay_us : AML_DECODE_RETRY_DELAY_MIN_US);
+		aml_vdec_schedule_retry(ctx);
 	}
 
 	v4l2_m2m_job_finish(dev->m2m_dev_dec, ctx->m2m_ctx);
@@ -1064,6 +1117,8 @@ void wait_vcodec_ending(struct aml_vcodec_ctx *ctx)
 
 	/* disable queue output item to worker. */
 	ctx->output_thread_ready = false;
+	cancel_delayed_work_sync(&ctx->decode_retry_work);
+	aml_vdec_reset_retry_backoff(ctx);
 
 	/* flush output buffer worker. */
 	flush_workqueue(dev->decode_workqueue);
@@ -1422,6 +1477,7 @@ void aml_vcodec_dec_set_default_params(struct aml_vcodec_ctx *ctx)
 	ctx->fh.m2m_ctx = ctx->m2m_ctx;
 	ctx->fh.ctrl_handler = &ctx->ctrl_hdl;
 	INIT_WORK(&ctx->decode_work, aml_vdec_worker);
+	INIT_DELAYED_WORK(&ctx->decode_retry_work, aml_vdec_retry_work);
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
 	ctx->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
 	ctx->quantization = V4L2_QUANTIZATION_DEFAULT;
@@ -1459,6 +1515,7 @@ void aml_vcodec_dec_set_default_params(struct aml_vcodec_ctx *ctx)
 	q_data->sizeimage[1] = q_data->sizeimage[0] / 2;
 	q_data->bytesperline[1] = q_data->coded_width;
 	ctx->reset_flag = V4L_RESET_MODE_NORMAL;
+	aml_vdec_reset_retry_backoff(ctx);
 
 	ctx->state = AML_STATE_IDLE;
 	ATRACE_COUNTER("v4l2_state", ctx->state);
@@ -2452,6 +2509,7 @@ static int vb2ops_vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct aml_vcodec_ctx *ctx = vb2_get_drv_priv(q);
 
 	ctx->has_receive_eos = false;
+	aml_vdec_reset_retry_backoff(ctx);
 
 	v4l2_m2m_set_dst_buffered(ctx->fh.m2m_ctx, true);
 
@@ -2533,6 +2591,9 @@ void vdec_device_vf_run(struct aml_vcodec_ctx *ctx)
 static int m2mops_vdec_job_ready(void *m2m_priv)
 {
 	struct aml_vcodec_ctx *ctx = m2m_priv;
+
+	if (READ_ONCE(ctx->decode_retry_pending))
+		return 0;
 
 	if (ctx->state < AML_STATE_PROBE ||
 		ctx->state > AML_STATE_FLUSHED)
