@@ -26,6 +26,10 @@
 #include <linux/amlogic/media/video_sink/v4lvideo_ext.h>
 #include "aml_vcodec_util.h"
 
+#ifndef AML_VCODEC_MAX_PLANES
+#define AML_VCODEC_MAX_PLANES	3
+#endif
+
 #define VCODEC_CAPABILITY_4K_DISABLED	0x10
 #define VCODEC_DEC_4K_CODED_WIDTH	4096U
 #define VCODEC_DEC_4K_CODED_HEIGHT	2304U
@@ -84,7 +88,7 @@ struct aml_video_dec_buf {
 
 	struct vdec_v4l2_buffer frame_buffer;
 	struct file_private_data privdata;
-	struct codec_mm_s *mem[2];
+	struct codec_mm_s *mem[AML_VCODEC_MAX_PLANES];
 	char mem_onwer[32];
 	bool used;
 	bool ready_to_display;

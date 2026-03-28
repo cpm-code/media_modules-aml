@@ -94,13 +94,21 @@ void video_vf_put(char *receiver, struct vdec_v4l2_buffer *fb, int id)
 {
 	struct vframe_provider_s *vfp = vf_get_provider(receiver);
 	struct vframe_s *vf = (struct vframe_s *)fb->vf_handle;
+	const char *provider_name = vfp ? vfp->name : "unknown";
+
+	if (!vf) {
+		v4l_dbg(0, V4L_DEBUG_CODEC_ERROR,
+			"[%d]: TO (%s) missing vframe handle.\n",
+			id, provider_name);
+		return;
+	}
 
 	ATRACE_COUNTER("v4l2_to", vf->index_disp);
 
 	v4l_dbg(0, V4L_DEBUG_CODEC_OUTPUT,
 		"[%d]: TO   (%s) vf: %p, idx: %d, "
 		"Y:(%lx, %u) C/U:(%lx, %u) V:(%lx, %u)\n",
-		id, vfp->name, vf, vf->index,
+		id, provider_name, vf, vf->index,
 		fb->m.mem[0].addr, fb->m.mem[0].size,
 		fb->m.mem[1].addr, fb->m.mem[1].size,
 		fb->m.mem[2].addr, fb->m.mem[2].size);

@@ -212,6 +212,8 @@ int v4l2_alloc_fd(int *fd)
 	if (!file->private_data) {
 		v4l_dbg(0, V4L_DEBUG_CODEC_ERROR,
 			"alloc priv data faild.\n");
+		fput(file);
+		put_unused_fd(file_fd);
 		return -ENOMEM;
 	}
 
