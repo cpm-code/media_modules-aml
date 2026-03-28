@@ -15,6 +15,7 @@
  *
  */
 #include <linux/slab.h>
+#include <linux/atomic.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
 #include "video_framerate_adapter.h"
@@ -27,20 +28,29 @@
 #endif
 
 struct frame_rate_dev_s* frame_rate_dev;
+static atomic_t last_frame_rate_hint = ATOMIC_INIT(-1);
 
  void vframe_rate_uevent(int duration)
 {
 	char *configured[2];
 	char framerate[40] = {0};
+	int last_duration;
 
-	sprintf(framerate, "FRAME_RATE_HINT=%lu",
+	if (!frame_rate_dev || !frame_rate_dev->dev)
+		return;
+
+	last_duration = atomic_xchg(&last_frame_rate_hint, duration);
+	if (last_duration == duration)
+		return;
+
+	scnprintf(framerate, sizeof(framerate), "FRAME_RATE_HINT=%lu",
 		(unsigned long)duration);
 	configured[0] = framerate;
 	configured[1] = NULL;
 	kobject_uevent_env(&frame_rate_dev->dev->kobj,
 		KOBJ_CHANGE, configured);
 
-	pr_info("%s: sent uevent %s\n", __func__, configured[0]);
+	pr_debug("%s: sent uevent %s\n", __func__, configured[0]);
 }
 
 EXPORT_SYMBOL(vframe_rate_uevent);
@@ -113,6 +123,7 @@ err_4:
 
 static void frame_rate_driver_exit(void)
 {
+	atomic_set(&last_frame_rate_hint, -1);
 	device_destroy(&frame_rate_class, frame_rate_dev->dev_no);
 	class_unregister(&frame_rate_class);
 	cdev_del(&frame_rate_dev->cdev);

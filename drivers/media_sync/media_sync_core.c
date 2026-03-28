@@ -27,6 +27,11 @@ extern int demux_get_pcr(int demux_device_index, int index, u64 *pcr);
 
 static unsigned int MinUpDateTimeThresholdUs = 50000;
 
+static u64 mediasync_pcr_to_us(u64 pcr)
+{
+	return div_u64(pcr * 100, 9);
+}
+
 static int aml_demux_get_pcr(int demux_device_index, int index, u64 *pcr) {
 	if (!aml_demux_pcrscr_get_cb)
 		aml_demux_pcrscr_get_cb = symbol_request(demux_get_pcr);
@@ -62,6 +67,7 @@ static u64 get_stc_time_us(s32 sSyncInsId, u64 *systemtime)
 	u64 stc;
 	u64 timeus;
 	u64 pcr;
+	u64 pcr_us = 0;
 	s64 pcr_diff;
 	s64 time_diff;
 	s32 index = sSyncInsId;
@@ -79,16 +85,17 @@ static u64 get_stc_time_us(s32 sSyncInsId, u64 *systemtime)
 	if (ret != 0) {
 		stc = timeus;
 	} else {
+		pcr_us = mediasync_pcr_to_us(pcr);
 		if (pInstance->last_pcr == 0) {
 			stc = timeus;
-			pInstance->last_pcr = div_u64(pcr * 100 , 9);
+			pInstance->last_pcr = pcr_us;
 			pInstance->last_system = timeus;
 		} else {
-			pcr_diff = div_u64(pcr * 100 , 9) - pInstance->last_pcr;
+			pcr_diff = pcr_us - pInstance->last_pcr;
 			time_diff = timeus - pInstance->last_system;
 			if (time_diff && (div_u64(get_llabs(pcr_diff) , time_diff)
 					    > 100)) {
-				pInstance->last_pcr = div_u64(pcr * 100 , 9);
+				pInstance->last_pcr = pcr_us;
 				pInstance->last_system = timeus;
 				stc = timeus;
 			} else {
@@ -97,12 +104,13 @@ static u64 get_stc_time_us(s32 sSyncInsId, u64 *systemtime)
 				else
 					stc = timeus;
 
-				pInstance->last_pcr = div_u64(pcr * 100 , 9);
+				pInstance->last_pcr = pcr_us;
 				pInstance->last_system = stc;
 			}
 		}
 	}
-	pr_debug("get_stc_time_us stc:%lld pcr:%lld system_time:%lld\n", stc,  div_u64(pcr * 100 , 9),  timeus);
+	pr_debug("get_stc_time_us stc:%lld pcr:%lld system_time:%lld\n",
+		stc, pcr_us, timeus);
 	return stc;
 }
 
@@ -121,17 +129,21 @@ long mediasync_ins_alloc(s32 sDemuxId,
 			mediasync_ins **pIns){
 	s32 index = 0;
 	mediasync_ins* pInstance = NULL;
+
+	if (!sSyncInsId || !pIns)
+		return -EINVAL;
+
 	pInstance = kzalloc(sizeof(mediasync_ins), GFP_KERNEL);
 	if (pInstance == NULL) {
 		return -1;
 	}
 
-	for (index = 0; index < MAX_INSTANCE_NUM - 1; index++) {
+	for (index = 0; index < MAX_INSTANCE_NUM; index++) {
 		if (vMediaSyncInsList[index] == NULL) {
 			vMediaSyncInsList[index] = pInstance;
 			pInstance->mSyncInsId = index;
 			*sSyncInsId = index;
-			pr_info("mediasync_ins_alloc index:%d\n", index);
+			pr_debug("mediasync_ins_alloc index:%d\n", index);
 			break;
 		}
 	}
@@ -228,7 +240,7 @@ long mediasync_ins_update_mediatime(s32 sSyncInsId,
 			if (diff_mediatime < 0
 				|| ((diff_mediatime > 0)
 				&& (get_llabs(diff_system_time - diff_mediatime) > MinUpDateTimeThresholdUs ))) {
-				pr_info("MEDIA_SYNC_PCRMASTER update time system diff:%lld media diff:%lld current:%lld\n",
+				pr_debug("MEDIA_SYNC_PCRMASTER update time system diff:%lld media diff:%lld current:%lld\n",
 											diff_system_time,
 											diff_mediatime,
 											current_systemtime);
@@ -248,7 +260,7 @@ long mediasync_ins_update_mediatime(s32 sSyncInsId,
 			if (diff_mediatime < 0
 				|| ((diff_mediatime > 0)
 				&& (get_llabs(diff_system_time - diff_mediatime) > MinUpDateTimeThresholdUs ))) {
-				pr_info("MEDIA_SYNC_PCRMASTER update time stc_diff:%lld media_diff:%lld (%lld) lSystemTime:%lld lMediaTime:%lld\n",
+				pr_debug("MEDIA_SYNC_PCRMASTER update time stc_diff:%lld media_diff:%lld (%lld) lSystemTime:%lld lMediaTime:%lld\n",
 											diff_system_time,
 											diff_mediatime,
 											diff_system_time - diff_mediatime,
