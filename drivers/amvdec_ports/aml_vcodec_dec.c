@@ -515,6 +515,8 @@ int put_fb_to_queue(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffer *in_fb)
 
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, &dstbuf->vb);
 
+	if (ctx->buf_used_count > 0)
+		ctx->buf_used_count--;
 	dstbuf->used = false;
 out:
 	mutex_unlock(&ctx->lock);
@@ -2438,6 +2440,10 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 		for (i = 0; i < q->num_buffers; ++i) {
 			vb2_v4l2 = to_vb2_v4l2_buffer(q->bufs[i]);
 			buf = container_of(vb2_v4l2, struct aml_video_dec_buf, vb);
+			buf->used = false;
+			buf->ready_to_display = false;
+			buf->queued_in_vb2 = false;
+			buf->queued_in_v4l2 = false;
 			buf->frame_buffer.status = FB_ST_NORMAL;
 			buf->que_in_m2m = false;
 			buf->vb.flags = 0;

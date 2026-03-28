@@ -19,7 +19,12 @@
 */
 #include "vdec_v4l2_buffer_ops.h"
 #include <media/v4l2-mem2mem.h>
+#include <linux/delay.h>
 #include <linux/printk.h>
+
+#define AML_V4L_DPB_WAIT_SLICE_US 1000
+#define AML_V4L_DPB_WAIT_SLICE_US_MAX 2000
+#define AML_V4L_DPB_WAIT_TIMEOUT_MS 1000
 
 int vdec_v4l_get_buffer(struct aml_vcodec_ctx *ctx,
 	struct vdec_v4l2_buffer **out)
@@ -85,8 +90,8 @@ static void aml_wait_dpb_ready(struct aml_vcodec_ctx *ctx)
 {
 	ulong expires;
 
-	expires = jiffies + msecs_to_jiffies(1000);
-	while (!ctx->v4l_codec_dpb_ready) {
+	expires = jiffies + msecs_to_jiffies(AML_V4L_DPB_WAIT_TIMEOUT_MS);
+	while (!READ_ONCE(ctx->v4l_codec_dpb_ready)) {
 		u32 ready_num = 0;
 
 		if (time_after(jiffies, expires)) {
@@ -96,7 +101,10 @@ static void aml_wait_dpb_ready(struct aml_vcodec_ctx *ctx)
 
 		ready_num = v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx);
 		if ((ready_num + ctx->buf_used_count) >= ctx->dpb_size)
-			ctx->v4l_codec_dpb_ready = true;
+			WRITE_ONCE(ctx->v4l_codec_dpb_ready, true);
+		else
+			usleep_range(AML_V4L_DPB_WAIT_SLICE_US,
+				AML_V4L_DPB_WAIT_SLICE_US_MAX);
 	}
 }
 
