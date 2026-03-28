@@ -74,19 +74,30 @@ enum aml_capture_buf_state {
 };
 
 
+struct aml_video_src_buf {
+	struct vb2_v4l2_buffer vb;
+	struct list_head list;
+
+	struct codec_mm_s *mem[AML_VCODEC_MAX_PLANES];
+	char mem_onwer[32];
+	bool used;
+	bool lastframe;
+	bool error;
+};
+
 /**
- * struct aml_video_dec_buf - Private data related to each VB2 buffer.
- * @b:		VB2 buffer
+ * struct aml_video_dst_buf - Private data related to each CAPTURE buffer.
+ * @vb:		VB2 buffer
  * @list:	link list
- * @used:	General ownership marker, also used by source-buffer flow
- * @state:	Capture buffer lifecycle state within the decoder bridge
- * @lastframe:		Intput buffer is last buffer - EOS
- * @error:		An unrecoverable error occurs on this buffer.
  * @frame_buffer:	Decode status, and buffer information of Capture buffer
- *
- * Note : These status information help us track and debug buffer state
+ * @privdata:	Per-buffer vframe handoff data
+ * @mem:		codec_mm mappings for the capture planes
+ * @mem_onwer:	codec_mm owner tag
+ * @used:	Decoder currently owns the capture buffer
+ * @state:	Capture buffer lifecycle state within the decoder bridge
+ * @error:		An unrecoverable error occurs on this buffer.
  */
-struct aml_video_dec_buf {
+struct aml_video_dst_buf {
 	struct vb2_v4l2_buffer vb;
 	struct list_head list;
 
@@ -96,7 +107,6 @@ struct aml_video_dec_buf {
 	char mem_onwer[32];
 	bool used;
 	enum aml_capture_buf_state state;
-	bool lastframe;
 	bool error;
 };
 

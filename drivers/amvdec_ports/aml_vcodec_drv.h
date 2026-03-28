@@ -396,7 +396,7 @@ struct aml_vdec_thread {
  * @fh: struct v4l2_fh.
  * @ctrl_hdl: handler for v4l2 framework.
  * @slock: protect v4l2 codec context.
- * @empty_flush_buf: a fake size-0 capture buffer that indicates flush.
+ * @empty_flush_buf: a fake size-0 source buffer that indicates flush.
  * @list: link to ctx_list of aml_vcodec_dev.
  * @q_data: store information of input and output queue of the context.
  * @queue: waitqueue that can be used to wait for this context to finish.
@@ -442,7 +442,7 @@ struct aml_vcodec_ctx {
 	struct v4l2_fh			fh;
 	struct v4l2_ctrl_handler	ctrl_hdl;
 	spinlock_t			slock;
-	struct aml_video_dec_buf	*empty_flush_buf;
+	struct aml_video_src_buf	*empty_flush_buf;
 	struct list_head		list;
 
 	struct aml_q_data		q_data[2];

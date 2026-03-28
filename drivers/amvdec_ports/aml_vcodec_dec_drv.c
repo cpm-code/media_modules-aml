@@ -55,7 +55,7 @@ static int fops_vcodec_open(struct file *file)
 {
 	struct aml_vcodec_dev *dev = video_drvdata(file);
 	struct aml_vcodec_ctx *ctx = NULL;
-	struct aml_video_dec_buf *aml_buf = NULL;
+	struct aml_video_src_buf *aml_buf = NULL;
 	int ret = 0;
 	struct vb2_queue *src_vq;
 
