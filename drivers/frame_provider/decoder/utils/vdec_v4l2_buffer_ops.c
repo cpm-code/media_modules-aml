@@ -18,13 +18,9 @@
 * Description:
 */
 #include "vdec_v4l2_buffer_ops.h"
+#include "../../../amvdec_ports/aml_vcodec_dpb_wait.h"
 #include <media/v4l2-mem2mem.h>
-#include <linux/delay.h>
 #include <linux/printk.h>
-
-#define AML_V4L_DPB_WAIT_SLICE_US 1000
-#define AML_V4L_DPB_WAIT_SLICE_US_MAX 2000
-#define AML_V4L_DPB_WAIT_TIMEOUT_MS 1000
 
 int vdec_v4l_get_buffer(struct aml_vcodec_ctx *ctx,
 	struct vdec_v4l2_buffer **out)
@@ -86,28 +82,6 @@ int vdec_v4l_set_hdr_infos(struct aml_vcodec_ctx *ctx,
 }
 EXPORT_SYMBOL(vdec_v4l_set_hdr_infos);
 
-static void aml_wait_dpb_ready(struct aml_vcodec_ctx *ctx)
-{
-	ulong expires;
-
-	expires = jiffies + msecs_to_jiffies(AML_V4L_DPB_WAIT_TIMEOUT_MS);
-	while (!READ_ONCE(ctx->v4l_codec_dpb_ready)) {
-		u32 ready_num = 0;
-
-		if (time_after(jiffies, expires)) {
-			pr_err("the DPB state has not ready.\n");
-			break;
-		}
-
-		ready_num = v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx);
-		if ((ready_num + ctx->buf_used_count) >= ctx->dpb_size)
-			WRITE_ONCE(ctx->v4l_codec_dpb_ready, true);
-		else
-			usleep_range(AML_V4L_DPB_WAIT_SLICE_US,
-				AML_V4L_DPB_WAIT_SLICE_US_MAX);
-	}
-}
-
 void aml_vdec_pic_info_update(struct aml_vcodec_ctx *ctx)
 {
 	unsigned int dpbsize = 0;
@@ -158,7 +132,8 @@ int vdec_v4l_res_ch_event(struct aml_vcodec_ctx *ctx)
 		return -EIO;
 
 	/* wait the DPB state to be ready. */
-	aml_wait_dpb_ready(ctx);
+	if (!aml_vcodec_wait_dpb_ready(ctx))
+		pr_err("the DPB state has not ready.\n");
 
 	aml_vdec_pic_info_update(ctx);
 

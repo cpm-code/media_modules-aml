@@ -21,6 +21,7 @@
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
 
+#include "aml_vcodec_dpb_wait.h"
 #include "aml_vcodec_drv.h"
 #include "aml_vcodec_dec.h"
 //#include "aml_vcodec_intr.h"
@@ -51,9 +52,7 @@
 #define AML_V4L2_SET_DRMMODE (V4L2_CID_USER_AMLOGIC_BASE + 0)
 
 #define WORK_ITEMS_MAX (32)
-#define AML_WAIT_SPIN_SLICE_US 1000
-#define AML_WAIT_SPIN_SLICE_US_MAX 2000
-#define AML_WAIT_TIMEOUT_MS 1000
+#define AML_WAIT_TIMEOUT_MS AML_VCODEC_WAIT_TIMEOUT_MS
 
 //#define USEC_PER_SEC 1000000
 
@@ -747,29 +746,6 @@ static bool is_enough_work_items(struct aml_vcodec_ctx *ctx)
 	return true;
 }
 
-static void aml_wait_dpb_ready(struct aml_vcodec_ctx *ctx)
-{
-	ulong expires;
-
-	expires = jiffies + msecs_to_jiffies(AML_WAIT_TIMEOUT_MS);
-	while (!READ_ONCE(ctx->v4l_codec_dpb_ready)) {
-		u32 ready_num = 0;
-
-		if (time_after(jiffies, expires)) {
-			v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
-				"the DPB state has not ready.\n");
-			break;
-		}
-
-		ready_num = v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx);
-		if ((ready_num + ctx->buf_used_count) >= ctx->dpb_size)
-			WRITE_ONCE(ctx->v4l_codec_dpb_ready, true);
-		else
-			usleep_range(AML_WAIT_SPIN_SLICE_US,
-				AML_WAIT_SPIN_SLICE_US_MAX);
-	}
-}
-
 static void aml_wait_m2m_job_idle(struct aml_vcodec_ctx *ctx,
 	const char *reason)
 {
@@ -784,8 +760,8 @@ static void aml_wait_m2m_job_idle(struct aml_vcodec_ctx *ctx,
 			break;
 		}
 
-		usleep_range(AML_WAIT_SPIN_SLICE_US,
-			AML_WAIT_SPIN_SLICE_US_MAX);
+		usleep_range(AML_VCODEC_WAIT_SLICE_US,
+			AML_VCODEC_WAIT_SLICE_US_MAX);
 	}
 }
 
@@ -928,7 +904,10 @@ static void aml_vdec_worker(struct work_struct *work)
 			"error processing src data. %d.\n", ret);
 	} else if (res_chg) {
 		/* wait the DPB state to be ready. */
-		aml_wait_dpb_ready(ctx);
+		if (!aml_vcodec_wait_dpb_ready(ctx)) {
+			v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
+				"the DPB state has not ready.\n");
+		}
 
 		src_buf_info->used = false;
 		aml_vdec_pic_info_update(ctx);
