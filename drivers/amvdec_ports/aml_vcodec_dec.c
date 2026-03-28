@@ -669,9 +669,9 @@ static int get_display_buffer(struct aml_vcodec_ctx *ctx, struct vdec_v4l2_buffe
 	}
 
 	if (!*out) {
-		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
+		v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
 			"No display frame buffer\n");
-		return -1;
+		return -EAGAIN;
 	}
 
 	return ret;
@@ -1020,17 +1020,19 @@ void wait_vcodec_ending(struct aml_vcodec_ctx *ctx)
 
 void try_to_capture(struct aml_vcodec_ctx *ctx)
 {
-	int ret = 0;
+	int ret;
 	struct vdec_v4l2_buffer *fb = NULL;
 
-	ret = get_display_buffer(ctx, &fb);
-	if (ret) {
+	do {
+		ret = get_display_buffer(ctx, &fb);
+		if (!ret)
+			trans_vframe_to_user(ctx, fb);
+	} while (!ret);
+
+	if (ret != -EAGAIN) {
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
 			"the que have no disp buf,ret: %d\n", ret);
-		return;
 	}
-
-	trans_vframe_to_user(ctx, fb);
 }
 EXPORT_SYMBOL_GPL(try_to_capture);
 
@@ -1077,8 +1079,10 @@ void aml_thread_notify(struct aml_vcodec_ctx *ctx,
 		if (thread->task == NULL)
 			continue;
 
-		if (thread->type == type)
+		if (thread->type == type) {
 			up(&thread->sem);
+			break;
+		}
 	}
 	mutex_unlock(&ctx->lock);
 }
