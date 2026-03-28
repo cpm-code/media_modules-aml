@@ -1048,22 +1048,20 @@ static int vdec_thread(void *data)
 	sched_setscheduler(current, SCHED_FIFO, &param);
 
 	for (;;) {
+		if (kthread_should_stop())
+			break;
+
 		v4l_dbg(ctx, V4L_DEBUG_CODEC_EXINFO,
 			"%s, state: %d\n", __func__, ctx->state);
 
 		if (down_interruptible(&thread->sem))
-			break;
+			continue;
 
-		if (thread->stop)
+		if (READ_ONCE(thread->stop) || kthread_should_stop())
 			break;
 
 		/* handle event. */
 		thread->func(ctx);
-	}
-
-	while (!kthread_should_stop()) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
 	}
 
 	return 0;
@@ -1102,6 +1100,7 @@ int aml_thread_start(struct aml_vcodec_ctx *ctx, aml_thread_func func,
 	thread->type = type;
 	thread->func = func;
 	thread->priv = ctx;
+	INIT_LIST_HEAD(&thread->node);
 	sema_init(&thread->sem, 0);
 
 	thread->task = kthread_run(vdec_thread, thread, "aml-%s", thread_name);
@@ -1112,7 +1111,9 @@ int aml_thread_start(struct aml_vcodec_ctx *ctx, aml_thread_func func,
 	}
 	sched_setscheduler_nocheck(thread->task, SCHED_FIFO, &param);
 
+	mutex_lock(&ctx->lock);
 	list_add(&thread->node, &ctx->vdec_thread_list);
+	mutex_unlock(&ctx->lock);
 
 	return 0;
 
@@ -1126,15 +1127,16 @@ EXPORT_SYMBOL_GPL(aml_thread_start);
 void aml_thread_stop(struct aml_vcodec_ctx *ctx)
 {
 	struct aml_vdec_thread *thread = NULL;
+	struct aml_vdec_thread *tmp = NULL;
+	LIST_HEAD(stop_list);
 
-	while (!list_empty(&ctx->vdec_thread_list)) {
-		thread = list_entry(ctx->vdec_thread_list.next,
-			struct aml_vdec_thread, node);
-		mutex_lock(&ctx->lock);
-		list_del(&thread->node);
-		mutex_unlock(&ctx->lock);
+	mutex_lock(&ctx->lock);
+	list_splice_init(&ctx->vdec_thread_list, &stop_list);
+	mutex_unlock(&ctx->lock);
 
-		thread->stop = true;
+	list_for_each_entry_safe(thread, tmp, &stop_list, node) {
+		list_del_init(&thread->node);
+		WRITE_ONCE(thread->stop, true);
 		up(&thread->sem);
 		kthread_stop(thread->task);
 		thread->task = NULL;
