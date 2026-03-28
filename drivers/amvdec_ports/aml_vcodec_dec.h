@@ -102,9 +102,11 @@ struct aml_video_dst_buf {
 	struct list_head list;
 
 	struct vdec_v4l2_buffer frame_buffer;
+	struct aml_vcodec_mem cached_mem[AML_VCODEC_MAX_PLANES];
 	struct file_private_data privdata;
 	struct codec_mm_s *mem[AML_VCODEC_MAX_PLANES];
 	char mem_onwer[32];
+	bool plane_meta_cached;
 	bool used;
 	enum aml_capture_buf_state state;
 	bool error;

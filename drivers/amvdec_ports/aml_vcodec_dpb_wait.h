@@ -41,7 +41,7 @@ static inline bool aml_vcodec_wait_dpb_ready(struct aml_vcodec_ctx *ctx)
 		if (time_after(jiffies, expires))
 			return false;
 
-		ready_num = v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx);
+		ready_num = atomic_read(&ctx->dst_buf_ready_count);
 		if ((ready_num + ctx->buf_used_count) >= ctx->dpb_size)
 			WRITE_ONCE(ctx->v4l_codec_dpb_ready, true);
 		else
