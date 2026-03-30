@@ -54,7 +54,7 @@
 #define WORK_ITEMS_MAX (32)
 #define AML_WAIT_TIMEOUT_MS AML_VCODEC_WAIT_TIMEOUT_MS
 #define AML_DECODE_RETRY_DELAY_MIN_US 1000U
-#define AML_DECODE_RETRY_DELAY_MAX_US 8000U
+#define AML_DECODE_RETRY_DELAY_MAX_US 2000U
 
 //#define USEC_PER_SEC 1000000
 
@@ -274,9 +274,16 @@ static void aml_vdec_reset_retry_backoff(struct aml_vcodec_ctx *ctx)
 	WRITE_ONCE(ctx->decode_retry_pending, false);
 }
 
+static u32 aml_capture_ready_count_get(struct aml_vcodec_ctx *ctx);
+
 static u32 aml_vdec_next_retry_delay_us(struct aml_vcodec_ctx *ctx)
 {
 	u32 delay = ctx->decode_retry_delay_us;
+
+	if (aml_capture_ready_count_get(ctx)) {
+		ctx->decode_retry_delay_us = AML_DECODE_RETRY_DELAY_MIN_US;
+		return AML_DECODE_RETRY_DELAY_MIN_US;
+	}
 
 	if (!delay)
 		delay = AML_DECODE_RETRY_DELAY_MIN_US;
@@ -347,7 +354,11 @@ static void aml_vdec_schedule_retry(struct aml_vcodec_ctx *ctx)
 	unsigned long delay_jiffies;
 	u32 delay_us = aml_vdec_next_retry_delay_us(ctx);
 
-	delay_jiffies = max_t(unsigned long, 1, usecs_to_jiffies(delay_us));
+	if (aml_capture_ready_count_get(ctx))
+		delay_jiffies = 0;
+	else
+		delay_jiffies = max_t(unsigned long, 1, usecs_to_jiffies(delay_us));
+
 	WRITE_ONCE(ctx->decode_retry_pending, true);
 	mod_delayed_work(ctx->dev->decode_workqueue,
 		&ctx->decode_retry_work, delay_jiffies);
@@ -1177,6 +1188,8 @@ void wait_vcodec_ending(struct aml_vcodec_ctx *ctx)
 {
 	struct aml_vcodec_dev *dev = ctx->dev;
 
+	atomic_set(&ctx->capture_thread_pending, 0);
+
 	/* disable queue output item to worker. */
 	ctx->output_thread_ready = false;
 	cancel_delayed_work_sync(&ctx->decode_retry_work);
@@ -1200,15 +1213,25 @@ void try_to_capture(struct aml_vcodec_ctx *ctx)
 	int ret;
 	struct vdec_v4l2_buffer *fb = NULL;
 
-	do {
-		ret = get_display_buffer(ctx, &fb);
-		if (!ret)
-			trans_vframe_to_user(ctx, fb);
-	} while (!ret);
+	for (;;) {
+		do {
+			ret = get_display_buffer(ctx, &fb);
+			if (!ret)
+				trans_vframe_to_user(ctx, fb);
+		} while (!ret);
 
-	if (ret != -EAGAIN) {
-		v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
-			"the que have no disp buf,ret: %d\n", ret);
+		if (ret != -EAGAIN) {
+			v4l_dbg(ctx, V4L_DEBUG_CODEC_ERROR,
+				"the que have no disp buf,ret: %d\n", ret);
+		}
+
+		atomic_set(&ctx->capture_thread_pending, 0);
+		smp_mb();
+
+		if (!aml_capture_ready_count_get(ctx))
+			break;
+
+		atomic_set(&ctx->capture_thread_pending, 1);
 	}
 }
 EXPORT_SYMBOL_GPL(try_to_capture);
@@ -2675,7 +2698,12 @@ static void m2mops_vdec_device_run(void *priv)
 void vdec_device_vf_run(struct aml_vcodec_ctx *ctx)
 {
 	if (ctx->state < AML_STATE_INIT ||
-		ctx->state > AML_STATE_FLUSHED)
+		ctx->state > AML_STATE_FLUSHED) {
+		atomic_set(&ctx->capture_thread_pending, 0);
+		return;
+	}
+
+	if (atomic_xchg(&ctx->capture_thread_pending, 1))
 		return;
 
 	aml_thread_notify(ctx, AML_THREAD_CAPTURE);

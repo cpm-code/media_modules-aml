@@ -479,6 +479,7 @@ struct aml_vcodec_ctx {
 	int				reset_flag;
 	int				decoded_frame_cnt;
 	int				buf_used_count;
+	atomic_t		capture_thread_pending;
 	atomic_t		dst_buf_ready_count;
 	u32				decode_retry_delay_us;
 };
