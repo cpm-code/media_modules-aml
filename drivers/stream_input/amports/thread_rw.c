@@ -40,7 +40,7 @@
 #define BUF_NAME "fetchbuf"
 
 #define DEFAULT_BLOCK_SIZE (64*1024)
-#define THREADRW_RETRY_DELAY msecs_to_jiffies(10)
+#define THREADRW_RETRY_DELAY msecs_to_jiffies(2)
 
 struct threadrw_buf {
 	void *vbuffer;
