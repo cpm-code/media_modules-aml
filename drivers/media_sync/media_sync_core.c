@@ -25,7 +25,7 @@ extern int demux_get_stc(int demux_device_index, int index,
                   u64 *stc, unsigned int *base);
 extern int demux_get_pcr(int demux_device_index, int index, u64 *pcr);
 
-static unsigned int MinUpDateTimeThresholdUs = 50000;
+static unsigned int MinUpDateTimeThresholdUs = 20000;
 
 static u64 mediasync_pcr_to_us(u64 pcr)
 {
